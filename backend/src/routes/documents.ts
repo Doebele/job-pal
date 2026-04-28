@@ -1,0 +1,299 @@
+// ==============================================================================
+// Document Routes — Upload, list, download, delete
+// ==============================================================================
+
+import { Hono } from 'hono';
+import multer from 'multer';
+import { db } from '../db';
+import { documents } from '../models/schema';
+import { eq } from 'drizzle-orm';
+import { config } from '../config';
+import { uploadFile, getFileBuffer, deleteFile } from '../services/storage-service';
+import pdfParse from 'pdf-parse';
+import * as mammoth from 'mammoth';
+
+const router = new Hono();
+
+// Configure multer for memory storage
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: config.MAX_FILE_SIZE,
+  },
+  fileFilter: (_req, file, cb) => {
+    // Allow common document types
+    const allowed = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/png',
+      'image/jpeg',
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not allowed'));
+    }
+  },
+});
+
+// POST /api/documents/upload
+router.post('/upload', upload.single('file') as any, async (c) => {
+  const userId = (c as any).user.id;
+  const file = (c as any).file;
+
+  if (!file) {
+    return c.json({ error: 'No file uploaded' }, 400);
+  }
+
+  try {
+    const uploaded = await uploadFile(file.buffer, file.originalname, file.mimetype);
+
+    await db.insert(documents).values({
+      userId,
+      filename: uploaded.filename,
+      originalName: uploaded.originalName,
+      mimeType: uploaded.mimeType,
+      size: uploaded.size,
+    });
+
+    return c.json({
+      message: 'File uploaded successfully',
+      document: {
+        id: uploaded.id,
+        filename: uploaded.filename,
+        originalName: uploaded.originalName,
+        mimeType: uploaded.mimeType,
+        size: uploaded.size,
+      },
+    }, 201);
+  } catch (error) {
+    console.error('[Documents] Upload error:', error);
+    return c.json({ error: 'File upload failed' }, 500);
+  }
+});
+
+// GET /api/documents/list
+router.get('/list', async (c) => {
+  const userId = (c as any).user.id;
+
+  const docs = await db
+    .select({
+      id: documents.id,
+      filename: documents.filename,
+      originalName: documents.originalName,
+      mimeType: documents.mimeType,
+      size: documents.size,
+      uploadedAt: documents.uploadedAt,
+    })
+    .from(documents)
+    .where(eq(documents.userId, userId))
+    .orderBy(documents.uploadedAt);
+
+  return c.json({ documents: docs });
+});
+
+// GET /api/documents/:id/download
+router.get('/:id/download', async (c) => {
+  const userId = (c as any).user.id;
+  const docId = c.req.param('id');
+
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, docId))
+    .limit(1);
+
+  if (!doc || doc.userId !== userId) {
+    return c.json({ error: 'Document not found' }, 404);
+  }
+
+  const buffer = getFileBuffer(doc.filename);
+  if (!buffer) {
+    return c.json({ error: 'File not found on storage' }, 404);
+  }
+
+  return c.body(buffer.toString('base64'), 200, {
+    'Content-Type': doc.mimeType,
+    'Content-Disposition': `attachment; filename="${doc.originalName}"`,
+  });
+});
+
+// DELETE /api/documents/:id
+router.delete('/:id', async (c) => {
+  const userId = (c as any).user.id;
+  const docId = c.req.param('id');
+
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(eq(documents.id, docId))
+    .limit(1);
+
+  if (!doc || doc.userId !== userId) {
+    return c.json({ error: 'Document not found' }, 404);
+  }
+
+  deleteFile(doc.filename);
+  await db.delete(documents).where(eq(documents.id, docId));
+
+  return c.json({ message: 'Document deleted' });
+});
+
+// ==============================================================================
+// POST /api/documents/cv-parse — Parse CV and return structured data
+// ==============================================================================
+
+router.post('/cv-parse', upload.single('file') as any, async (c) => {
+  const file = (c as any).file;
+
+  if (!file) {
+    return c.json({ error: 'No file uploaded' }, 400);
+  }
+
+  try {
+    let text = '';
+
+    if (file.mimetype === 'application/pdf') {
+      const pdfData = await pdfParse(file.buffer);
+      text = pdfData.text;
+    } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.mimetype === 'application/msword') {
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      text = result.value;
+    } else if (file.mimetype?.startsWith('image/')) {
+      return c.json({
+        data: {
+          confidence: 0,
+          message: 'Bild-Upload wird unterstützt, aber Text-Extraktion erfordert einen OCR-Dienst. Bitte lade PDF oder DOCX hoch.',
+        },
+      }, 200);
+    } else {
+      return c.json({ error: 'Dateityp nicht unterstützt' }, 400);
+    }
+
+    const parsed = parseCVText(text);
+
+    return c.json({ data: parsed });
+  } catch (error) {
+    console.error('[CV-Parse] Error:', error);
+    return c.json({ error: 'CV-Parsing fehlgeschlagen' }, 500);
+  }
+});
+
+// ==============================================================================
+// CV Text Parser — heuristic-based extraction
+// ==============================================================================
+
+interface ParsedCVResult {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  education?: { institution: string; field: string; degree: string; startYear: number; endYear: number | null }[];
+  skills?: string[];
+  languages?: { language: string; level: string }[];
+  internships?: { company: string; role: string; durationMonths: number; description?: string; skillsUsed: string[] }[];
+  confidence: number;
+}
+
+function parseCVText(text: string): ParsedCVResult {
+  const result: ParsedCVResult = { confidence: 0 };
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const fullText = text.toLowerCase();
+
+  // Extract name (usually first non-empty line)
+  if (lines.length > 0) {
+    const firstLine = lines[0];
+    if (firstLine.length > 2 && firstLine.length < 50 && !firstLine.includes('@') && !firstLine.match(/\d/)) {
+      result.name = firstLine;
+    }
+  }
+
+  // Extract email
+  const emailRegex = /[\w.-]+@[\w.-]+\.\w+/g;
+  const emails = fullText.match(emailRegex);
+  if (emails) result.email = emails[0];
+
+  // Extract phone (Swiss formats)
+  const phonePatterns = [
+    /(\+41|0041|0)[\s\-]?[1-9]\d[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/,
+    /(\+41|0041|0)[\s\-]?[1-9]\d[\s\-]?\d{7}/,
+  ];
+  for (const pattern of phonePatterns) {
+    const match = fullText.match(pattern);
+    if (match) { result.phone = match[0]; break; }
+  }
+
+  // Extract education
+  const eduLines: string[] = [];
+  let inEduSection = false;
+  const eduKeywords = ['bildung', 'education', 'schul', 'lehre', 'matura', 'bms', 'gymnasium', 'sek', 'studium', 'abschluss'];
+
+  for (const line of lines) {
+    const lineLower = line.toLowerCase();
+    if (eduKeywords.some((k) => lineLower.includes(k))) {
+      inEduSection = true;
+      continue;
+    }
+    if (inEduSection && line.match(/^[\w\s\/\.\-]+$/) && line.length > 3 && line.length < 80) {
+      // Stop at non-education sections
+      const sectionKeywords = ['erfahrung', 'beruf', 'arbeit', 'skills', 'kompetenzen', 'sprachen', 'language', 'kontakt', 'adresse'];
+      if (sectionKeywords.some((k) => lineLower.includes(k)) && !line.match(/[\d]/)) {
+        inEduSection = false;
+        continue;
+      }
+      eduLines.push(line);
+    } else if (inEduSection) {
+      inEduSection = false;
+    }
+  }
+
+  if (eduLines.length > 0) {
+    result.education = eduLines.slice(0, 5).map((line) => {
+      const yearMatch = line.match(/(19|20)\d{2}/g);
+      const startYear = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear() - 4;
+      return {
+        institution: line,
+        field: '',
+        degree: '',
+        startYear,
+        endYear: yearMatch?.[1] ? parseInt(yearMatch[1]) : null,
+      };
+    });
+  }
+
+  // Extract skills (heuristic: look for skill-like patterns)
+  const commonSkills = [
+    'javascript', 'typescript', 'react', 'html', 'css', 'python', 'sql', 'git',
+    'agile', 'scrum', 'teamarbeit', 'kommunikation', 'problem solving', 'excel',
+    'powerpoint', 'word', 'photoshop', 'deutsch', 'englisch', 'französisch',
+    'projektmanagement', 'organisation', 'kundenkontakt', 'leadership',
+  ];
+  const foundSkills = commonSkills.filter((skill) => fullText.includes(skill));
+  if (foundSkills.length > 0) result.skills = foundSkills;
+
+  // Extract languages
+  const langLines = lines.filter((line) =>
+    ['deutsch', 'englisch', 'französisch', 'italienisch', 'rätoromanisch', 'english', 'german', 'french'].some((l) => line.toLowerCase().includes(l))
+  );
+  if (langLines.length > 0) {
+    result.languages = langLines.slice(0, 5).map((line) => {
+      const levelMatch = line.match(/(a1|a2|b1|b2|c1|c2|native|muttersprache|fluency|fortgeschritten|grundk)/i);
+      return {
+        language: line.split(/[\s\-]+/)[0],
+        level: levelMatch ? levelMatch[0] : 'unknown',
+      };
+    });
+  }
+
+  // Calculate confidence score
+  let score = 0;
+  const fields = [result.name, result.email, result.phone, result.education, result.skills, result.languages];
+  const filled = fields.filter((f) => f !== undefined && f !== null && (Array.isArray(f) ? f.length > 0 : true)).length;
+  result.confidence = filled / fields.length;
+
+  return result;
+}
+
+export default router;
