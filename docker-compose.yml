@@ -30,7 +30,7 @@ services:
       DB_USER: ${DB_USER:-jobpal}
       DB_PASSWORD: ${DB_PASSWORD:-jobpal_secret}
       DB_NAME: ${DB_NAME:-jobpal}
-      DB_PORT: ${DB_PORT:-5432}
+      DB_PORT: ${DB_INTERNAL_PORT:-5432}
       BACKEND_PORT: ${BACKEND_PORT:-3000}
       JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_secret_min_32_chars}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}

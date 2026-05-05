@@ -13,6 +13,8 @@ const JobDetail = lazy(() => import('./pages/JobDetail'));
 const Applications = lazy(() => import('./pages/Applications'));
 const Settings = lazy(() => import('./pages/Settings'));
 const SavedJobs = lazy(() => import('./pages/SavedJobs'));
+const MyJobs = lazy(() => import('./pages/MyJobs'));
+const CreateJob = lazy(() => import('./pages/CreateJob'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center min-h-screen bg-bg">
@@ -91,6 +93,22 @@ function App() {
           element={
             <ProtectedRoute>
               <SavedJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-jobs"
+          element={
+            <ProtectedRoute>
+              <MyJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/jobs/new"
+          element={
+            <ProtectedRoute>
+              <CreateJob />
             </ProtectedRoute>
           }
         />

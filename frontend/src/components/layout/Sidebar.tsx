@@ -12,8 +12,10 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: 'dashboard' },
   { label: 'Mein Profil', path: '/profile', icon: 'profile' },
   { label: 'Job-Liste', path: '/jobs', icon: 'jobs' },
-  { label: 'Bewerbungen', path: '/applications', icon: 'applications' },
-  { label: 'Gespeicherte Jobs', path: '/saved-jobs', icon: 'bookmark' },
+  { label: 'Meine Inserate', path: '/my-jobs', icon: 'jobs', roles: ['employer'] },
+  { label: 'Neues Inserat', path: '/jobs/new', icon: 'jobs', roles: ['employer'] },
+  { label: 'Bewerbungen', path: '/applications', icon: 'applications', roles: ['student'] },
+  { label: 'Gespeicherte Jobs', path: '/saved-jobs', icon: 'bookmark', roles: ['student'] },
   { label: 'Einstellungen', path: '/settings', icon: 'settings' },
 ];
 

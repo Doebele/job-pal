@@ -81,6 +81,21 @@ export interface Job {
   updatedAt: Date;
 }
 
+export interface JobDraft {
+  title: string;
+  description: string;
+  category: string;
+  location: string;
+  canton?: string;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryCurrency?: string;
+  startDate?: string | null;
+  duration?: string | null;
+  applicationDeadline?: string | null;
+  isPublished?: boolean;
+}
+
 export interface Application {
   id: string;
   applicantId: string;

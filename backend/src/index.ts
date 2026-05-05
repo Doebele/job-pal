@@ -45,6 +45,19 @@ app.use('/api/documents/*', authMiddleware);
 app.use('/api/match/*', authMiddleware);
 app.use('/api/applications/*', authMiddleware);
 app.use('/api/saved-jobs/*', authMiddleware);
+app.use('/api/jobs/mine', authMiddleware);
+app.use('/api/jobs', async (c, next) => {
+  if (c.req.method === 'POST') {
+    return authMiddleware(c, next);
+  }
+  await next();
+});
+app.use('/api/jobs/*', async (c, next) => {
+  if (c.req.method === 'PATCH' || c.req.method === 'DELETE') {
+    return authMiddleware(c, next);
+  }
+  await next();
+});
 
 app.route('/api/profile', profileRoutes);
 app.route('/api/documents', documentRoutes);
