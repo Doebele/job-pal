@@ -1,0 +1,68 @@
+services:
+  job-pal-db:
+    image: postgres:16-alpine
+    container_name: job-pal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-jobpal}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jobpal_secret}
+      POSTGRES_DB: ${DB_NAME:-jobpal}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jobpal} -d ${DB_NAME:-jobpal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - job-pal
+
+  job-pal-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: job-pal-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      job-pal-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - job-pal
+
+  job-pal-frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: job-pal-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - job-pal-backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - job-pal
+
+volumes:
+  db-data:
+
+networks:
+  job-pal:
+    driver: bridge
