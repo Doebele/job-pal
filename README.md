@@ -11,17 +11,19 @@ Job-Matching Plattform für den Schweizer Arbeitsmarkt (Fokus Auszubildende).
 ## Setup
 
 ```bash
-cp .env.example .env          # In backend/ and frontend/
+cp .env.example .env
 docker compose up -d
 ```
+
+Bei lokalen Port-Konflikten kannst du in `.env` nur die externen Ports anpassen (z. B. `FRONTEND_PORT=5174` oder `DB_EXTERNAL_PORT=5436`).
 
 ## Ports
 
 | Service      | Port |
 |-------------|------|
 | Backend     | 3000 |
-| Frontend    | 8080 |
-| PostgreSQL  | 5432 |
+| Frontend    | 5173 |
+| PostgreSQL  | 5435 |
 
 ## API
 

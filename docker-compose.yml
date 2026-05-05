@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-jobpal_secret}
       POSTGRES_DB: ${DB_NAME:-jobpal}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_EXTERNAL_PORT:-5435}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,8 +25,25 @@ services:
       dockerfile: backend/Dockerfile
     container_name: job-pal-backend
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
+    environment:
+      DB_HOST: ${DB_HOST:-job-pal-db}
+      DB_USER: ${DB_USER:-jobpal}
+      DB_PASSWORD: ${DB_PASSWORD:-jobpal_secret}
+      DB_NAME: ${DB_NAME:-jobpal}
+      DB_PORT: ${DB_PORT:-5432}
+      BACKEND_PORT: ${BACKEND_PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_secret_min_32_chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      NODE_ENV: ${NODE_ENV:-development}
+      UPLOAD_DIR: ${UPLOAD_DIR:-./uploads}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@jobpal.ch}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:
