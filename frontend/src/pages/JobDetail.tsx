@@ -7,6 +7,7 @@ import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import { SCHWEIZER_KANTONE } from '@shared/constants';
+import { useSavedJobsStore } from '../stores/saved-jobs-store';
 import api from '../lib/api';
 
 export default function JobDetail() {
@@ -18,6 +19,8 @@ export default function JobDetail() {
   const [applying, setApplying] = useState(false);
   const [showApply, setShowApply] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
+  const { toggleBookmark, items } = useSavedJobsStore();
+  const isSaved = items.some((i) => i.jobId === id);
 
   const cantonLabel = job?.canton ? SCHWEIZER_KANTONE[job.canton] || job.canton : '';
 
@@ -101,12 +104,31 @@ export default function JobDetail() {
                 )}
               </div>
             </div>
-            <Button
-              variant="primary"
-              onClick={() => setShowApply(true)}
-            >
-              Bewerben
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => toggleBookmark(id!)}
+                className="p-2 rounded-base hover:bg-surface-2 transition-colors"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 16 16"
+                  fill={isSaved ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className={isSaved ? 'text-accent' : 'text-fg-3'}
+                >
+                  <path d="M4 2h8v12l-4-3-4 3V2z" />
+                </svg>
+              </button>
+              <Button
+                variant="primary"
+                onClick={() => setShowApply(true)}
+              >
+                Bewerben
+              </Button>
+            </div>
           </div>
 
           {/* Salary */}

@@ -1,4 +1,4 @@
-import { useProfileStore } from '../../stores/profile-store';
+import { useWizardStore } from '../../stores/wizard-store';
 import { Input } from '../ui/Input';
 import { SCHWEIZER_KANTONE } from '@shared/constants';
 
@@ -13,7 +13,7 @@ interface ProfileFormProps {
 }
 
 export function ProfileForm({ onSubmit, isLoading }: ProfileFormProps) {
-  const { draft, setDraft } = useProfileStore();
+  const { draft, setDraft, saveError } = useWizardStore();
 
   const handleChange = (field: string, value: string) => {
     setDraft({ [field]: value });
@@ -70,13 +70,36 @@ export function ProfileForm({ onSubmit, isLoading }: ProfileFormProps) {
         />
       </div>
 
-      <Input
-        label="Bio"
-        value={draft.bio}
-        onChange={(e) => handleChange('bio', e.target.value)}
-        placeholder="Kurze Beschreibung über dich..."
-        helper="Max. 2000 Zeichen"
-      />
+      <div>
+        <label className="t-body-sm text-fg-2 block mb-1">Kanton</label>
+        <select
+          value={draft.canton ?? ''}
+          onChange={(e) => handleChange('canton', e.target.value)}
+          className="bp-input w-full"
+        >
+          <option value="">Kanton wählen...</option>
+          {kantoneOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="t-body-sm text-fg-2 block mb-1">Bio</label>
+        <textarea
+          value={draft.bio}
+          onChange={(e) => handleChange('bio', e.target.value)}
+          placeholder="Kurze Beschreibung über dich..."
+          rows={3}
+          maxLength={2000}
+          className="bp-input w-full resize-none"
+        />
+        <p className="t-caption text-fg-3 mt-1">Max. 2000 Zeichen</p>
+      </div>
+
+      {saveError && (
+        <p className="t-body-sm text-red">{saveError}</p>
+      )}
 
       <div className="flex justify-end gap-2">
         <button

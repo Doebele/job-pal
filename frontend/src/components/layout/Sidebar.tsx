@@ -13,6 +13,7 @@ const navItems: NavItem[] = [
   { label: 'Mein Profil', path: '/profile', icon: 'profile' },
   { label: 'Job-Liste', path: '/jobs', icon: 'jobs' },
   { label: 'Bewerbungen', path: '/applications', icon: 'applications' },
+  { label: 'Gespeicherte Jobs', path: '/saved-jobs', icon: 'bookmark' },
   { label: 'Einstellungen', path: '/settings', icon: 'settings' },
 ];
 
@@ -101,6 +102,11 @@ function Icon({ name }: { name: string }) {
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M4 2h8v12H4z" />
         <path d="M6 5h4M6 7h4M6 9h2" />
+      </svg>
+    ),
+    bookmark: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M4 2h8v12l-4-3-4 3V2z" />
       </svg>
     ),
     settings: (

@@ -181,3 +181,47 @@ export interface ProfileDraft {
   cvParsed: boolean;
   cvParsedAt: string | null;
 }
+
+// --- Aggregated Job Search ---
+
+export interface AggregatedJob {
+  id: string;
+  title: string;
+  description: string;
+  company?: string;
+  location: string;
+  canton?: string;
+  url: string;
+  source: string;
+  sourceName: string;
+  publishedAt?: string;
+  category?: string;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryCurrency?: string;
+}
+
+export interface JobSourceDef {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+  type: 'internal' | 'rss' | 'api' | 'deeplink';
+  requiresKey: boolean;
+  configKeys?: string[];
+  tags: string[];
+}
+
+// --- Saved Jobs / Bookmarks ---
+
+export type SavedJobStatus = 'saved' | 'contacted' | 'application_sent' | 'rejected' | 'invited';
+
+export interface SavedJob {
+  id: string;
+  userId: string;
+  jobId: string;
+  status: SavedJobStatus;
+  note: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}

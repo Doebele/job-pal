@@ -16,6 +16,7 @@ import documentRoutes from './routes/documents';
 import jobRoutes from './routes/jobs';
 import matchingRoutes from './routes/matching';
 import applicationRoutes from './routes/applications';
+import savedJobRoutes from './routes/saved-jobs';
 
 const app = new Hono();
 
@@ -43,12 +44,14 @@ app.use('/api/profile/*', authMiddleware);
 app.use('/api/documents/*', authMiddleware);
 app.use('/api/match/*', authMiddleware);
 app.use('/api/applications/*', authMiddleware);
+app.use('/api/saved-jobs/*', authMiddleware);
 
 app.route('/api/profile', profileRoutes);
 app.route('/api/documents', documentRoutes);
 app.route('/api/jobs', jobRoutes);
 app.route('/api/match', matchingRoutes);
 app.route('/api/applications', applicationRoutes);
+app.route('/api/saved-jobs', savedJobRoutes);
 
 // Error handling
 app.onError((err, c) => {

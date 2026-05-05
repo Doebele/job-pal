@@ -129,3 +129,17 @@ export const passwordResets = pgTable('password_resets', {
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const savedJobs = pgTable('saved_jobs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id),
+  jobId: uuid('job_id')
+    .notNull()
+    .references(() => jobs.id),
+  status: varchar('status', { length: 20 }).default('saved').notNull(),
+  note: text('note'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});

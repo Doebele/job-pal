@@ -6,7 +6,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { jobs } from '../models/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or, ilike } from 'drizzle-orm';
+import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
   ZH: 'Zürich', BE: 'Bern', LU: 'Luzern', UR: 'Uri', SZ: 'Schwyz',
   OW: 'Obwalden', NW: 'Nidwalden', GL: 'Glarus', ZG: 'Zug', FR: 'Freiburg',
@@ -15,7 +16,7 @@ const SCHWEIZER_KANTONE: Record<string, string> = {
   GR: 'Graubünden', AG: 'Aargau', TG: 'Thurgau', TI: 'Tessin', VD: 'Waadt',
   VS: 'Wallis', NE: 'Neuenburg', GE: 'Genf', JU: 'Jura',
 };
-const JOB_KATEGORIEN = ['Lehre / Ausbildung', 'Junior', 'Mid-Level', 'Senior', 'Praktikum', 'Nebstbeschäftigung'];
+const JOB_KATEGORIEN = ['Lehre / Ausbildung', 'Schnupperlehre', 'Ferienjob', 'Junior', 'Mid-Level', 'Senior', 'Praktikum', 'Nebstbeschäftigung'];
 
 const router = new Hono();
 
@@ -31,29 +32,67 @@ const jobSchema = z.object({
   startDate: z.string().optional().nullable(),
   duration: z.string().optional().nullable(),
   applicationDeadline: z.string().optional().nullable(),
+  isPublished: z.boolean().optional(),
+});
+
+// GET /api/jobs/search — Aggregated multi-source search
+router.get('/search', async (c) => {
+  const { q, canton, category, sources, limit } = c.req.query();
+
+  const result = await searchJobs({
+    q: q || undefined,
+    canton: canton || undefined,
+    category: category || undefined,
+    sources: sources ? sources.split(',').map((s) => s.trim()) : undefined,
+    limit: limit ? parseInt(limit, 10) : 60,
+  });
+
+  return c.json({ jobs: result, total: result.length });
+});
+
+// GET /api/jobs/sources — available sources and their configuration status
+router.get('/sources', async (c) => {
+  return c.json({ sources: getSourceStatus() });
 });
 
 // GET /api/jobs — List with optional filters
 router.get('/', async (c) => {
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
+  const query = c.req.query();
 
-  const whereClauses = [];
-  const params: any[] = [];
+  const whereClauses: any[] = [eq(jobs.isPublished, true)];
+
+  let searchClause: any = null;
+  if (query.q) {
+    const search = `%${query.q}%`;
+    searchClause = or(
+      ilike(jobs.title, search),
+      ilike(jobs.description, search),
+    );
+  }
 
   if (query.category) {
-    whereClauses.push(eq(jobs.category, query.category as string));
+    whereClauses.push(eq(jobs.category, query.category));
   }
   if (query.canton) {
-    whereClauses.push(eq(jobs.canton, query.canton as string));
+    whereClauses.push(eq(jobs.canton, query.canton));
   }
-  if (query.published !== undefined) {
-    whereClauses.push(eq(jobs.isPublished, true));
+
+  let whereCondition: any = undefined;
+  if (whereClauses.length > 0) {
+    whereCondition = and(...whereClauses);
+  }
+  if (searchClause) {
+    if (whereCondition) {
+      whereCondition = and(searchClause, whereCondition);
+    } else {
+      whereCondition = searchClause;
+    }
   }
 
   const result = await db
     .select()
     .from(jobs)
-    .where(whereClauses.length > 0 ? and(...whereClauses) : undefined)
+    .where(whereCondition)
     .orderBy(jobs.createdAt);
 
   return c.json({ jobs: result });
@@ -69,12 +108,13 @@ router.post('/', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400);
   }
 
+  const { isPublished, ...jobData } = parsed.data;
   const [job] = await db
     .insert(jobs)
     .values({
       employerId,
-      ...parsed.data,
-      isPublished: false,
+      ...jobData,
+      isPublished: isPublished ?? false,
     })
     .returning();
 

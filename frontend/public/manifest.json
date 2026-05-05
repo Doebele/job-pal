@@ -1,0 +1,16 @@
+{
+  "name": "Job-Pal",
+  "short_name": "Job-Pal",
+  "description": "Job-Matching Plattform für den Schweizer Arbeitsmarkt",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0e12",
+  "theme_color": "#0d0e12",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

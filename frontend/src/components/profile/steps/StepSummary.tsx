@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useWizardStore } from '../../../stores/wizard-store';
 import { Badge } from '../../ui/Badge';
 
@@ -17,11 +18,14 @@ const STEP_MAP: Record<number, string> = {
 };
 
 export function StepSummary({ onComplete, onStep }: StepSummaryProps) {
+  const navigate = useNavigate();
   const { draft, cvParsedData, saveProfile, isSaving, saveError } = useWizardStore();
 
   const handleSave = async () => {
     try {
       await saveProfile();
+      onComplete();
+      navigate('/profile');
     } catch {
       // Error handled in store
     }

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { ProfilePreview } from '../components/profile/ProfilePreview';
 import { ProfileForm } from '../components/profile/ProfileForm';
 import { Button } from '../components/ui/Button';
-import { useAuthStore } from '../stores/auth-store';
+import { useWizardStore } from '../stores/wizard-store';
 import api from '../lib/api';
 
 export default function ProfileView() {
-  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const { setDraft, saveProfile, isSaving } = useWizardStore();
   const [editing, setEditing] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
+  const [hasProfile, setHasProfile] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,11 +21,22 @@ export default function ProfileView() {
   const loadProfile = async () => {
     try {
       const res = await api.get('/profile');
-      setProfile(res.data.profile);
+      setDraft(res.data.profile);
+      setHasProfile(true);
     } catch {
-      // No profile yet
+      setHasProfile(false);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      await saveProfile();
+      setEditing(false);
+      await loadProfile();
+    } catch {
+      // saveError is set in wizard-store
     }
   };
 
@@ -43,27 +56,34 @@ export default function ProfileView() {
             <h1 className="t-h1 text-fg-1 mb-1">Mein Profil</h1>
             <p className="t-body text-fg-2">Verwalte deine persönlichen Informationen</p>
           </div>
-          {!editing ? (
-            <Button variant="primary" onClick={() => setEditing(true)}>
-              Bearbeiten
-            </Button>
-          ) : (
-            <Button variant="ghost" onClick={() => setEditing(false)}>
-              Abbrechen
-            </Button>
+          {hasProfile && (
+            !editing ? (
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => navigate('/profile/setup')}>
+                  Vollständig bearbeiten
+                </Button>
+                <Button variant="primary" onClick={() => setEditing(true)}>
+                  Schnell bearbeiten
+                </Button>
+              </div>
+            ) : (
+              <Button variant="ghost" onClick={() => setEditing(false)}>
+                Abbrechen
+              </Button>
+            )
           )}
         </div>
 
         {editing ? (
-          <ProfileForm onSubmit={() => setEditing(false)} />
-        ) : profile ? (
+          <ProfileForm onSubmit={handleSave} isLoading={isSaving} />
+        ) : hasProfile ? (
           <ProfilePreview />
         ) : (
           <div className="bp-card dashed-accent text-center p-12">
             <p className="t-body text-fg-2 mb-4">Noch kein Profil vorhanden</p>
             <Button
               variant="primary"
-              onClick={() => window.location.href = '/profile/setup'}
+              onClick={() => navigate('/profile/setup')}
             >
               Profil einrichten
             </Button>
