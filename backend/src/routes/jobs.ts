@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { jobs } from '../models/schema';
-import { eq, and, or, ilike } from 'drizzle-orm';
+import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
   ZH: 'Zürich', BE: 'Bern', LU: 'Luzern', UR: 'Uri', SZ: 'Schwyz',
@@ -34,6 +34,7 @@ const jobSchema = z.object({
   applicationDeadline: z.string().optional().nullable(),
   isPublished: z.boolean().optional(),
 });
+const jobPatchSchema = jobSchema.partial();
 
 // GET /api/jobs/search — Aggregated multi-source search
 router.get('/search', async (c) => {
@@ -73,6 +74,12 @@ router.get('/', async (c) => {
   if (query.category) {
     whereClauses.push(eq(jobs.category, query.category));
   }
+  if (query.type) {
+    whereClauses.push(eq(jobs.duration, query.type));
+  }
+  if (query.location) {
+    whereClauses.push(ilike(jobs.location, `%${query.location}%`));
+  }
   if (query.canton) {
     whereClauses.push(eq(jobs.canton, query.canton));
   }
@@ -93,13 +100,17 @@ router.get('/', async (c) => {
     .select()
     .from(jobs)
     .where(whereCondition)
-    .orderBy(jobs.createdAt);
+    .orderBy(desc(jobs.createdAt));
 
   return c.json({ jobs: result });
 });
 
 // POST /api/jobs — Create
 router.post('/', async (c) => {
+  if (!(c as any).user || (c as any).user.role !== 'employer') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
   const employerId = (c as any).user.id;
   const body = await c.req.json();
   const parsed = jobSchema.safeParse(body);
@@ -121,11 +132,36 @@ router.post('/', async (c) => {
   return c.json({ job }, 201);
 });
 
-// PUT /api/jobs/:id — Update
-router.put('/:id', async (c) => {
+// GET /api/jobs/mine — Employer own jobs
+router.get('/mine', async (c) => {
+  if (!(c as any).user || (c as any).user.role !== 'employer') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const employerId = (c as any).user.id;
+  const result = await db
+    .select()
+    .from(jobs)
+    .where(eq(jobs.employerId, employerId))
+    .orderBy(jobs.createdAt);
+
+  return c.json({ jobs: result });
+});
+
+// PATCH /api/jobs/:id — Update
+router.patch('/:id', async (c) => {
+  if (!(c as any).user || (c as any).user.role !== 'employer') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
   const employerId = (c as any).user.id;
   const jobId = c.req.param('id');
   const body = await c.req.json();
+  const parsed = jobPatchSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400);
+  }
 
   const [existing] = await db
     .select()
@@ -139,9 +175,49 @@ router.put('/:id', async (c) => {
 
   const [job] = await db
     .update(jobs)
-    .set({ ...body, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(jobs.id, jobId))
     .returning();
+
+  return c.json({ job });
+});
+
+// DELETE /api/jobs/:id — Delete
+router.delete('/:id', async (c) => {
+  if (!(c as any).user || (c as any).user.role !== 'employer') {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const employerId = (c as any).user.id;
+  const jobId = c.req.param('id');
+
+  const [existing] = await db
+    .select()
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+
+  if (!existing || existing.employerId !== employerId) {
+    return c.json({ error: 'Job not found' }, 404);
+  }
+
+  await db.delete(jobs).where(eq(jobs.id, jobId));
+
+  return c.json({ ok: true });
+});
+
+// GET /api/jobs/:id — Single job detail
+router.get('/:id', async (c) => {
+  const jobId = c.req.param('id');
+  const [job] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.isPublished, true)))
+    .limit(1);
+
+  if (!job) {
+    return c.json({ error: 'Job not found' }, 404);
+  }
 
   return c.json({ job });
 });

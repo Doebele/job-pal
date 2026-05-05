@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { JOB_KATEGORIEN, SCHWEIZER_KANTONE, SCHNUPPERLEHREN_QUELLEN } from '@shared/constants';
-import { useSourcesStore } from '../../stores/sources-store';
+import { JOB_KATEGORIEN, SCHNUPPERLEHREN_QUELLEN } from '@shared/constants';
 
 interface FilterBarProps {
   onFilterChange: (filters: Record<string, string>) => void;
@@ -10,39 +9,48 @@ interface FilterBarProps {
 
 export function JobFilterBar({ onFilterChange }: FilterBarProps) {
   const [query, setQuery] = useState('');
+  const [location, setLocation] = useState('');
   const [category, setCategory] = useState('');
-  const [canton, setCanton] = useState('');
-  const { enabledSourceIds, toggleSource, getAllSources } = useSourcesStore();
+  const [type, setType] = useState('');
 
-  const kantoneOptions = [
-    { value: '', label: 'Alle Kantone' },
-    ...Object.entries(SCHWEIZER_KANTONE).map(([k, v]) => ({ value: k, label: v })),
+  const typeOptions = [
+    { value: '', label: 'Alle Typen' },
+    { value: 'Lehre', label: 'Lehre' },
+    { value: 'Praktikum', label: 'Praktikum' },
+    { value: 'Teilzeit', label: 'Teilzeit' },
+    { value: 'Vollzeit', label: 'Vollzeit' },
+    { value: 'Befristet', label: 'Befristet' },
   ];
   const categoryOptions = [
     { value: '', label: 'Alle Kategorien' },
     ...JOB_KATEGORIEN.map((c) => ({ value: c, label: c })),
   ];
 
-  const allSources = getAllSources();
-
   const applyFilters = () => {
     const filters: Record<string, string> = {};
     if (query) filters.q = query;
+    if (location) filters.location = location;
     if (category) filters.category = category;
-    if (canton) filters.canton = canton;
-    if (enabledSourceIds.length > 0) filters.sources = enabledSourceIds.join(',');
+    if (type) filters.type = type;
     onFilterChange(filters);
   };
 
   return (
     <div className="bp-card space-y-4">
-      {/* Search + Kategorie + Kanton */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Suche + Ort + Kategorie + Typ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Input
           label="Suche"
           placeholder="Job-Titel oder Beschreibung..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
+        />
+        <Input
+          label="Ort"
+          placeholder="z. B. Zürich"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && applyFilters()}
         />
         <Select
@@ -52,42 +60,11 @@ export function JobFilterBar({ onFilterChange }: FilterBarProps) {
           onChange={(e) => setCategory(e.target.value)}
         />
         <Select
-          label="Kanton"
-          options={kantoneOptions}
-          value={canton}
-          onChange={(e) => setCanton(e.target.value)}
+          label="Typ"
+          options={typeOptions}
+          value={type}
+          onChange={(e) => setType(e.target.value)}
         />
-      </div>
-
-      {/* Quellen-Auswahl */}
-      <div>
-        <p className="eyebrow mb-2">Quellen</p>
-        <div className="flex flex-wrap gap-2">
-          {allSources.map((source) => {
-            const active = enabledSourceIds.includes(source.id);
-            return (
-              <button
-                key={source.id}
-                type="button"
-                onClick={() => toggleSource(source.id)}
-                title={source.description}
-                className={`t-body-sm px-3 py-1 rounded-full border transition-colors ${
-                  active
-                    ? 'bg-accent/10 border-accent/40 text-accent'
-                    : 'bg-surface-2 border-border text-fg-3 hover:border-fg-3'
-                }`}
-              >
-                {source.name}
-                {source.requiresKey && (
-                  <span className="ml-1 opacity-50" title="API-Key erforderlich">🔑</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {enabledSourceIds.length === 0 && (
-          <p className="t-caption text-red mt-1">Mindestens eine Quelle muss ausgewählt sein.</p>
-        )}
       </div>
 
       {/* Schnupperlehre Hinweis */}
@@ -110,8 +87,7 @@ export function JobFilterBar({ onFilterChange }: FilterBarProps) {
       <div className="flex justify-end">
         <button
           onClick={applyFilters}
-          disabled={enabledSourceIds.length === 0}
-          className="bp-btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          className="bp-btn-primary"
         >
           Filter anwenden
         </button>
