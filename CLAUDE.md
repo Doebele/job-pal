@@ -41,17 +41,25 @@ npm run preview    # Preview production build
 ```bash
 cd /Users/clausmedvesek/Developer/projects/job-pal
 docker compose up -d       # Start PostgreSQL + backend + frontend
-docker compose down        # Stop all services
+docker compose down        # Stop all services (volumes preserved)
 ```
 
+**Running ports** (configured in root `.env`, not `backend/.env`):
+- Backend: `BACKEND_PORT=3310` → http://localhost:3310
+- Frontend: `FRONTEND_PORT=8543` → http://localhost:8543
+- DB: `DB_EXTERNAL_PORT=15435` → localhost:15435
+
 ### Environment
-Copy `.env.example` to `backend/.env` and fill in values. Required: `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` (min 32 chars), `DB_HOST`. Optional: `RESEND_API_KEY` or SMTP config for email, `CORS_ORIGIN`. Config is validated with Zod at startup (`backend/src/config.ts`) and will throw if required vars are missing.
+Copy `.env.example` to `backend/.env` and fill in values. Required: `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` (min 32 chars), `DB_HOST`. Optional: `RESEND_API_KEY` or SMTP config for email, `CORS_ORIGIN`, `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` for job aggregation. Config is validated with Zod at startup (`backend/src/config.ts`) and will throw if required vars are missing.
+
+**Port config lives in root `.env`** — docker-compose interpolates `BACKEND_PORT`, `FRONTEND_PORT`, `DB_EXTERNAL_PORT` from there (not from `backend/.env`).
 
 ## Architecture
 
 ### Backend
 - **Entry**: `backend/src/index.ts` — Hono app with logger, compression, CORS middleware. Registers route groups under `/api/`.
-- **Routes** (`backend/src/routes/`): `auth.ts` (register/login/logout/me/forgot-password/reset-password/verify-email), `profile.ts` (CRUD + Berufsanfänger fields), `documents.ts` (upload/download/cv-parse), `jobs.ts` (CRUD + filters + categories — **public, no auth required**), `matching.ts` (skill-based job scoring), `applications.ts` (apply + status updates), `saved-jobs.ts` (save/unsave job listings)
+- **Routes** (`backend/src/routes/`): `auth.ts` (register/login/logout/me/forgot-password/reset-password/verify-email), `profile.ts` (CRUD + Berufsanfänger fields), `documents.ts` (upload/download/cv-parse), `jobs.ts` (CRUD + filters + aggregated search — **public, no auth required**), `matching.ts` (skill-based job scoring), `applications.ts` (apply + status updates), `saved-jobs.ts` (save/unsave job listings)
+- **Job Aggregation** (`services/job-aggregator.ts`) — `GET /api/jobs/search` aggregates results from local DB + optional Adzuna API (when `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` set). 5-min in-memory cache. Results include `source` + `sourceName` for attribution. `GET /api/jobs/sources` returns configured status of each source.
 - **Auth**: JWT middleware (`middleware/auth.ts`) — extracts Bearer token, attaches `{id, email, role}` to `c.user`. Cast `c` to `AuthC` (exported from the middleware) to get typed user access in route handlers.
 - **Rate limiting**: In-memory Map-based (`middleware/rate-limit.ts`), keyed by IP+path
 - **DB**: Drizzle ORM + pg Pool (20 max connections). Schema in `src/models/schema.ts`. Migrations live in `backend/drizzle/`.
@@ -61,11 +69,14 @@ Copy `.env.example` to `backend/.env` and fill in values. Required: `DB_USER`, `
 ### Frontend
 - **Routing**: `App.tsx` — lazy-loaded pages via React Router 7, Suspense fallback. All pages under `/dashboard`, `/profile`, `/jobs`, `/applications`, `/settings`, `/saved-jobs` are wrapped in `ProtectedRoute`.
 - **Path aliases**: `@/` → `frontend/src/`, `@shared/` → `shared/` (configured in `vite.config.ts`)
-- **State**: Zustand stores (`stores/`) — `auth-store` (persisted), `wizard-store` (persisted), `profile-store` (draft), `matching-store` (cached), `saved-jobs-store` (persisted)
+- **State**: Zustand stores (`stores/`) — `auth-store` (persisted), `wizard-store` (persisted), `profile-store` (draft), `matching-store` (cached), `saved-jobs-store` (persisted), `sources-store` (persisted — user's enabled job sources)
 - **API**: Axios instance (`lib/api.ts`) with auth interceptor (reads token from `localStorage['job-pal-token']`). On 401, clears storage and redirects to `/login`.
 - **Auth context**: `lib/auth-context.tsx` — `useAuth()` hook
 - **Custom hooks**: `useMe()`, `useProfile()`, `useUpdateProfile()`, `useDocuments()`, `useUploadDocument()`
-- **Profile Wizard**: 7 steps (`components/profile/steps/`) — PersonalInfo, School, SoftSkills, CVUpload, TargetRoles, Internships, Summary. State managed by `wizard-store`.
+- **Profile Wizard**: 7 steps (`components/profile/steps/`) — PersonalInfo, School, SoftSkills, CVUpload, TargetRoles, Internships, Summary. State managed by `wizard-store`. On completion navigates to `/profile`.
+- **Profile editing**: `ProfileView` seeds `wizard-store` from the API on mount. "Schnell bearbeiten" edits basic fields inline; "Vollständig bearbeiten" re-opens the wizard pre-populated.
+- **Job search**: `JobList` uses `/api/jobs/search` with sources from `sources-store`. `JobCard` shows coloured source badge; external jobs link directly to original URL. Below results: deep-link buttons to Glassdoor, LinkedIn, jobs.ch, JobScout24, berufsberatung.ch with search terms pre-filled.
+- **Settings**: manages enabled job sources (toggle, custom RSS), Adzuna key setup instructions, deep-link portal overview.
 - **Design**: Dark theme with CSS custom properties (`index.css`), `.bp-*` component classes, TailwindCSS
 
 ### Database Schema (7 tables)
@@ -85,5 +96,7 @@ Copy `.env.example` to `backend/.env` and fill in values. Required: `DB_USER`, `
 - Matching algorithm scoring: skills=50pts, language=25pts, education=15pts, location=10pts
 - Storage service has `StorageAdapter` interface — currently local filesystem implementation
 - Email uses `sendEmail()` which tries Resend first, falls back to SMTP
-- Shared domain types live in `shared/types.ts`; Swiss locale constants (cantons, Branchen, Schulsystem) live in `shared/constants.ts` — import via `@shared/` alias in frontend
+- Shared domain types live in `shared/types.ts`; Swiss locale constants (cantons, Branchen, Schulsystem, job sources) live in `shared/constants.ts` — import via `@shared/` alias in frontend
+- `AggregatedJob` (from `shared/types.ts`) is the unified job type for search results; local DB jobs are mapped to this format with `source: 'job-pal'` and `url: '/jobs/:id'`; external jobs have full URLs and open in new tab
+- Backend cannot import from `shared/` via `@shared/` alias due to `rootDir: ./src` in `backend/tsconfig.json` — define types locally in backend services instead
 - No tests exist in the project yet

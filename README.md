@@ -1,193 +1,181 @@
 # Job-Pal
 
-Job-Matching Plattform für den Schweizer Arbeitsmarkt (Fokus Auszubildende).
+Swiss job-matching platform for Berufsanfänger (new graduates & apprentices) and employers.
 
-## Tech-Stack
+## Tech Stack
 
-- **Backend:** Hono.js (Node.js), Drizzle ORM, PostgreSQL
-- **Frontend:** React, Vite, TailwindCSS, Zustand, React Query
-- **Infrastruktur:** Docker Compose
+| Layer | Technology |
+|---|---|
+| Backend | Hono.js (Node.js 20), Drizzle ORM, PostgreSQL 16 |
+| Frontend | React 19, Vite 6, TailwindCSS, Zustand, TanStack Query |
+| Infrastructure | Docker Compose, nginx (SPA + reverse proxy) |
 
-## Setup
+## Quick Start
 
 ```bash
-cp .env.example .env
+cp .env.example backend/.env   # fill in DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET
 docker compose up -d
 ```
 
-Bei lokalen Port-Konflikten kannst du in `.env` nur die externen Ports anpassen (z. B. `FRONTEND_PORT=5174` oder `DB_EXTERNAL_PORT=5436`).
+**App:** http://localhost:8543 · **API:** http://localhost:3310 · **DB:** localhost:15435
 
-## Ports
+> Port conflicts? Override in the root `.env` — see [Port Configuration](#port-configuration).
 
-| Service      | Port |
-|-------------|------|
-| Backend     | 3000 |
-| Frontend    | 5173 |
-| PostgreSQL  | 5435 |
+## Features
 
-## API
+### For Students (Berufsanfänger)
+- **Profile Wizard** — 7-step guided setup: personal info, school type, target roles, soft skills, internships, CV upload, summary
+- **CV Parsing** — upload PDF/DOCX, auto-fill profile fields
+- **Job Matching** — scoring algorithm (skills 50 pts · language 25 pts · education 15 pts · location 10 pts)
+- **Job Aggregation** — search across Job-Pal DB + Adzuna API (optional); deep-links to Glassdoor, LinkedIn, jobs.ch, JobScout24, berufsberatung.ch
+- **Saved Jobs** — bookmark with status tracking (saved → contacted → application sent → invited)
 
-Base URL: `http://localhost:3000`
+### For Employers
+- **Job Posting** — create and manage listings with salary, location, deadline
+- **Applications** — view applicants, update status, leave feedback (1–5 stars)
 
-- `GET /health` — Health check
-- `POST /api/auth/register` — Registration
-- `POST /api/auth/login` — Login
-- `GET /api/auth/me` — Current user
+### Platform
+- JWT auth, bcrypt passwords, email verification, password reset
+- Rate limiting (in-memory, keyed by IP+route)
+- Swiss-specific: all 26 cantons, Branchen, Schulsystem (Sek1/Lehre/BMS/Matura/FMS)
 
-## Development
+## API Endpoints
+
+Base URL: `http://localhost:3310`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | — | Health check |
+| POST | `/api/auth/register` | — | Register |
+| POST | `/api/auth/login` | — | Login |
+| GET | `/api/auth/me` | ✓ | Current user |
+| GET/POST/PUT | `/api/profile` | ✓ | Profile CRUD |
+| GET | `/api/jobs/search` | — | Aggregated search (`?q=&canton=&sources=`) |
+| GET | `/api/jobs/sources` | — | Available source status |
+| GET | `/api/jobs` | — | Local DB jobs (filter: `?q=&canton=&category=`) |
+| POST/PUT | `/api/jobs/:id` | ✓ employer | Job CRUD |
+| POST/GET | `/api/applications` | ✓ | Apply / list applications |
+| GET/POST/DELETE | `/api/saved-jobs` | ✓ | Bookmark jobs |
+| POST | `/api/documents` | ✓ | Upload CV/documents |
+| GET | `/api/match` | ✓ | Skill-based job matching |
+
+## Job Aggregation
+
+Job-Pal aggregates results from multiple sources with source attribution:
+
+| Source | Type | Setup |
+|---|---|---|
+| Job-Pal DB | Internal | Always available |
+| Adzuna | API | Free key at [developer.adzuna.com](https://developer.adzuna.com) → set `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` in `backend/.env` |
+| Glassdoor, LinkedIn, jobs.ch, JobScout24, berufsberatung.ch | Deep-link | No API needed — opens pre-filled search in new tab |
+
+Users can enable/disable sources per-session in **Settings → Job-Quellen**. Custom RSS feeds can be added there too.
+
+## Port Configuration
+
+Default ports (override in root `.env`):
+
+| Variable | Default | Service |
+|---|---|---|
+| `BACKEND_PORT` | `3310` | API server (external → internal :3000) |
+| `FRONTEND_PORT` | `8543` | Web app (external → internal :80) |
+| `DB_EXTERNAL_PORT` | `15435` | PostgreSQL (external → internal :5432) |
 
 ```bash
-# Backend
-cd backend && npm run dev
-
-# Frontend
-cd frontend && npm run dev
+# Example root .env — avoids conflicts with other local projects
+BACKEND_PORT=3310
+FRONTEND_PORT=8543
+DB_EXTERNAL_PORT=15435
 ```
+
+The backend's *internal* DB connection always uses `job-pal-db:5432` (Docker network), regardless of the external port mapping.
+
+## Local Development
+
+```bash
+# Start DB only via Docker, run services locally
+docker compose up -d job-pal-db
+
+# Backend (port 3000)
+cd backend && cp .env.example .env  # set DB_HOST=localhost, DB_PORT=15435
+npm install && npm run dev
+
+# Frontend (port 5173, proxies /api → :3000)
+cd frontend && npm install && npm run dev
+```
+
+### Environment Variables (`backend/.env`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `DB_USER` | ✓ | PostgreSQL user |
+| `DB_PASSWORD` | ✓ | PostgreSQL password |
+| `DB_NAME` | ✓ | Database name |
+| `DB_HOST` | ✓ | `job-pal-db` (Docker) or `localhost` (local dev) |
+| `JWT_SECRET` | ✓ min 32 chars | Token signing key (`openssl rand -hex 32`) |
+| `RESEND_API_KEY` | optional | Email via Resend (falls back to SMTP) |
+| `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` | optional | Job aggregation via Adzuna |
+| `CORS_ORIGIN` | optional | Restrict to production domain in prod |
+
+## Database
+
+Drizzle ORM migrations run automatically on container start (`start.sh`).
+
+```bash
+cd backend
+npm run db:generate   # generate migration from schema changes
+npm run db:migrate    # apply pending migrations
+npm run db:studio     # open Drizzle Studio (browser UI)
+```
+
+**Schema:** `users` · `profiles` · `documents` · `jobs` · `applications` · `application_feedback` · `password_resets` · `saved_jobs`
 
 ## Deployment
 
-### Synology NAS
+### Synology NAS (Container Manager)
 
 ```bash
+# On NAS via SSH
+cd /docker/job-pal
+cp .env.example backend/.env   # fill in secrets
 docker compose up -d
 ```
 
-Tipp: Reverse Proxy in DSM einrichten für `https://jobpal.local` + Let's Encrypt.
+Enable HTTPS: DSM → Application Portal → Reverse Proxy → add `jobpal.local` → Let's Encrypt.
 
-### Strato (statisch)
+### VPS (Strato / Hetzner)
+
+```bash
+ssh root@<server-ip>
+git clone https://github.com/Doebele/job-pal.git /opt/job-pal
+cd /opt/job-pal && cp .env.example backend/.env
+docker compose up -d
+```
+
+### Static Frontend Only (Strato Webhosting)
 
 ```bash
 cd frontend && npm run build
-# Upload dist/ via FTP/sFTP
+# Upload dist/ via FTP to public_html/
 ```
 
----
+Backend requires a Docker-capable host or external service (Railway, Render, Fly.io).
 
-# Deployment & Infrastruktur-Handbuch
+## Security Checklist
 
-## Projektstruktur
+- [ ] `JWT_SECRET` min. 32 chars random (`openssl rand -hex 32`)
+- [ ] `CORS_ORIGIN` set to production domain (not `*`)
+- [ ] `.env` in `.gitignore` (never commit secrets)
+- [ ] HTTPS via reverse proxy (nginx / DSM / Caddy)
+- [ ] Regular `pg_dump` backups
+- [ ] `npm audit` before each deploy
 
-```
-job-pal/
-├── frontend/
-│   ├── Dockerfile
-│   ├── nginx.conf          # SPA Routing + Security Headers
-│   ├── package.json
-│   └── src/
-├── backend/
-│   ├── Dockerfile
-│   ├── start.sh            # Migrations + Server Start
-│   ├── package.json
-│   ├── src/
-│   └── .env                # ⚠️ Geheimnisse! Nicht committen
-├── docker-compose.yml
-├── .env.example
-└── shared/
-    ├── types.ts
-    └── constants.ts
-```
-
-## Docker-Setup
-
-### `frontend/Dockerfile` (bereits vorhanden)
-
-Multi-stage build: `node:20-alpine` → `nginx:alpine`. Kopiert SPA-Build nach `/usr/share/nginx/html`.
-
-### `frontend/nginx.conf` (bereits vorhanden)
-
-- SPA Routing: `try_files $uri $uri/ /index.html`
-- API Proxy zu `job-pal-backend:3000`
-- Security headers (X-Frame-Options, X-Content-Type-Options, etc.)
-- Gzip Kompression
-- Static asset caching (30d, immutable)
-
-### `backend/Dockerfile` (bereits vorhanden)
-
-Multi-stage build: `node:20-alpine` → `node:20-alpine-slim`. Enthält `start.sh` für Drizzle-Migrationen vor dem Server-Start.
-
-### `docker-compose.yml` (bereits vorhanden)
-
-3 Services: `job-pal-db` (PostgreSQL 16), `job-pal-backend` (Hono), `job-pal-frontend` (nginx). Mit Health Checks und Bridge-Network.
-
-### `.env.example` (bereits vorhanden)
-
-Alle Umgebungsvariablen mit Defaults und Kommentaren. Kopieren nach `.env` und anpassen.
-
-## Deployment-Anleitungen
-
-### Synology NAS (Container Manager)
-
-1. **Container Manager aktivieren:** DSM → Paketzentrum → Container Manager installieren
-2. **Projektordner erstellen:** `/docker/job-pal`
-3. **Dateien hochladen:** `docker-compose.yml`, `.env`, `frontend/`, `backend/`
-4. **Terminal öffnen:** `ssh <user>@<nas-ip>`
-5. **Deploy:**
-   ```bash
-   cd /docker/job-pal
-   docker compose up -d
-   ```
-6. **Zugriff:** `http://<nas-ip>:8080`
-7. **HTTPS:** Reverse Proxy in DSM einrichten mit Let's Encrypt
-
-### Strato VPS (Docker-fähig)
+## Contributing
 
 ```bash
-ssh root@<strato-ip>
-# docker-compose.yml, .env, frontend/, backend/ hochladen
-cd /opt/job-pal
-docker compose up -d
-```
-
-Firewall: Port 80/443 öffnen, SSH auf nicht-Standardport legen.
-
-### Strato Webhosting (traditionell, kein Docker)
-
-1. `cd frontend && npm run build` → `dist/` generieren
-2. Backend als PM2-Prozess hosten (`npm i -g pm2`)
-3. `dist/` via FTP/SFTP in `public_html/` hochladen
-4. Datenbank: Strato MySQL nutzen oder externe DB (ElephantSQL / Neon)
-
-## Security & DSGVO-Checkliste
-
-| Bereich | Massnahme | Status |
-|---------|-----------|--------|
-| Auth | JWT mit `exp`-Claim, bcrypt für Passwörter | ☐ |
-| CORS | `CORS_ORIGIN` explizit auf Domain beschränken (`*` verbieten) | ☐ |
-| Uploads | `MAX_FILE_SIZE=10mb`, MIME-Type-Check, PDF/JPG nur | ☐ |
-| DB | PostgreSQL mit SSL, regelmässige Backups (`pg_dump`) | ☐ |
-| DSGVO | Datenschutzerklärung, Cookie-Consent, Löschfunktion für Profile, Datenminimierung | ☐ |
-| Secrets | `.env` nie committen, in NAS/Strato sicher speichern | ☐ |
-| Rate Limit | Backend-Middleware: 100 req/min/IP | ☐ |
-| Dependencies | `npm audit fix`, `docker scan` für Images | ☐ |
-
-## Nächste Schritte
-
-### Stellenmarkt-APIs (Schweiz)
-
-| Anbieter | Kosten | Notes |
-|----------|--------|-------|
-| Adzuna | Kostenlos bis 10k req/Monat | Gute Coverage, einfache Auth |
-| Indeed Publisher | Kostenlos / Umsatzbasiert | Hohe Reichweite, strikte Richtlinien |
-| jobs.ch Partner | Auf Anfrage / B2B | Schweizer Marktführer |
-
-### KI & PDF-Features
-
-- **CV-Parsing:** `pdf-parse` + `mammoth.js` (DOCX) + Tesseract OCR für Scans
-- **Motivationsschreiben:** OpenAI/Claude API mit Prompt-Template
-- **Matching:** Cosine Similarity oder TF-IDF zwischen Profil-Tags & Stellen-Tags
-
-## Ready-to-Run Checklist
-
-- [ ] `.env` mit echten Secrets befüllen
-- [ ] `docker compose config` ausführen (Syntax-Check)
-- [ ] `docker compose up -d` starten
-- [ ] `http://localhost:8080` → Frontend lädt
-- [ ] `http://localhost:3000/health` → Backend antwortet
-- [ ] Docker-Logs prüfen: `docker compose logs -f`
-- [ ] HTTPS aktivieren (NAS: DSM Reverse Proxy / Strato: Let's Encrypt)
-
-## Secrets generieren
-
-```bash
-openssl rand -hex 32
+git checkout -b feature/my-feature
+# make changes, then:
+npm run build   # verify both frontend and backend compile
+git commit -m "feat: ..."
+git push origin feature/my-feature
 ```
