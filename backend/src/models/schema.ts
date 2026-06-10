@@ -126,6 +126,7 @@ export const passwordResets = pgTable('password_resets', {
     .notNull()
     .references(() => users.id),
   token: text('token').notNull(),
+  tokenType: varchar('token_type', { length: 30 }).default('password_reset').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
