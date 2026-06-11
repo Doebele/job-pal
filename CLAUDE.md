@@ -50,7 +50,7 @@ docker compose down        # Stop all services (volumes preserved)
 - DB: `DB_EXTERNAL_PORT=15435` → localhost:15435
 
 ### Environment
-Copy `.env.example` to `backend/.env` and fill in values. Required: `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` (min 32 chars), `DB_HOST`. Optional: `RESEND_API_KEY` or SMTP config for email, `CORS_ORIGIN`, `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` for job aggregation. Config is validated with Zod at startup (`backend/src/config.ts`) and will throw if required vars are missing.
+Copy `.env.example` to the root `.env` and fill in values. Required: `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `JWT_SECRET` (min 32 chars, generated with `openssl rand -hex 32`), `DB_HOST`. Optional: `RESEND_API_KEY` or SMTP config for email, `CORS_ORIGIN`, `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` for job aggregation. Config is validated with Zod at startup (`backend/src/config.ts`) and will throw if required vars are missing.
 
 **Port config lives in root `.env`** — docker-compose interpolates `BACKEND_PORT`, `FRONTEND_PORT`, `DB_EXTERNAL_PORT` from there (not from `backend/.env`).
 
