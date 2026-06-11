@@ -13,7 +13,8 @@ Swiss job-matching platform for Berufsanfänger (new graduates & apprentices) an
 ## Quick Start
 
 ```bash
-cp .env.example backend/.env   # fill in DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET
+cp .env.example .env
+openssl rand -hex 32           # paste this value into JWT_SECRET in .env
 docker compose up -d
 ```
 
@@ -66,7 +67,7 @@ Job-Pal aggregates results from multiple sources with source attribution:
 | Source | Type | Setup |
 |---|---|---|
 | Job-Pal DB | Internal | Always available |
-| Adzuna | API | Free key at [developer.adzuna.com](https://developer.adzuna.com) → set `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` in `backend/.env` |
+| Adzuna | API | Free key at [developer.adzuna.com](https://developer.adzuna.com) → set `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` in `.env` |
 | Glassdoor, LinkedIn, jobs.ch, JobScout24, berufsberatung.ch | Deep-link | No API needed — opens pre-filled search in new tab |
 
 Users can enable/disable sources per-session in **Settings → Job-Quellen**. Custom RSS feeds can be added there too.
@@ -104,7 +105,7 @@ npm install && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
-### Environment Variables (`backend/.env`)
+### Environment Variables (`.env`)
 
 | Variable | Required | Description |
 |---|---|---|
@@ -137,7 +138,7 @@ npm run db:studio     # open Drizzle Studio (browser UI)
 ```bash
 # On NAS via SSH
 cd /docker/job-pal
-cp .env.example backend/.env   # fill in secrets
+cp .env.example .env           # fill in secrets, especially JWT_SECRET
 docker compose up -d
 ```
 
@@ -148,7 +149,8 @@ Enable HTTPS: DSM → Application Portal → Reverse Proxy → add `jobpal.local
 ```bash
 ssh root@<server-ip>
 git clone https://github.com/Doebele/job-pal.git /opt/job-pal
-cd /opt/job-pal && cp .env.example backend/.env
+cd /opt/job-pal && cp .env.example .env
+# Fill JWT_SECRET in .env before starting containers.
 docker compose up -d
 ```
 

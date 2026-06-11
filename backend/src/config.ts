@@ -4,6 +4,10 @@
 
 import { z } from 'zod';
 
+const INSECURE_JWT_SECRETS = new Set([
+  'change_me_to_a_long_random_secret_min_32_chars',
+]);
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DB_HOST: z.string().default('job-pal-db'),
@@ -11,7 +15,12 @@ const schema = z.object({
   DB_USER: z.string().default('jobpal'),
   DB_PASSWORD: z.string().default('jobpal_secret'),
   DB_NAME: z.string().default('jobpal'),
-  JWT_SECRET: z.string().min(32),
+  JWT_SECRET: z
+    .string()
+    .min(32)
+    .refine((secret) => !INSECURE_JWT_SECRETS.has(secret), {
+      message: 'JWT_SECRET must be a unique random value, not the example placeholder',
+    }),
   JWT_EXPIRES_IN: z.string().default('7d'),
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_FILE_SIZE: z.coerce.number().default(10 * 1024 * 1024),

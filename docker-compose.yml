@@ -32,7 +32,7 @@ services:
       DB_NAME: ${DB_NAME:-jobpal}
       DB_PORT: ${DB_INTERNAL_PORT:-5432}
       BACKEND_PORT: ${BACKEND_PORT:-3000}
-      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_secret_min_32_chars}
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required. Generate one with openssl rand -hex 32}"
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       NODE_ENV: ${NODE_ENV:-development}
       UPLOAD_DIR: ${UPLOAD_DIR:-./uploads}

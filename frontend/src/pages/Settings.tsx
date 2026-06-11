@@ -196,7 +196,7 @@ export default function Settings() {
               </a>
               . Danach <code className="bg-surface-2 px-1 rounded">ADZUNA_APP_ID</code> und{' '}
               <code className="bg-surface-2 px-1 rounded">ADZUNA_APP_KEY</code> in{' '}
-              <code className="bg-surface-2 px-1 rounded">backend/.env</code> eintragen und den Server neu starten.
+              <code className="bg-surface-2 px-1 rounded">.env</code> eintragen und den Server neu starten.
             </p>
           </div>
 
