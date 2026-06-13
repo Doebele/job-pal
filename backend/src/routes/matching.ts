@@ -28,11 +28,13 @@ router.post('/', async (c) => {
 
   const { profileId, category, canton, limit } = parsed.data;
 
+  const userId = (c as any).user.id;
+
   // Get profile
   const [profile] = await db
     .select()
     .from(profiles)
-    .where(eq(profiles.id, profileId))
+    .where(and(eq(profiles.id, profileId), eq(profiles.userId, userId)))
     .limit(1);
 
   if (!profile) {
@@ -44,7 +46,7 @@ router.post('/', async (c) => {
   if (category) whereClauses.push(eq(jobs.category, category));
   if (canton) whereClauses.push(eq(jobs.canton, canton));
 
-  const whereCond = whereClauses.length > 1 ? and(...whereClauses) : undefined;
+  const whereCond = whereClauses.length > 0 ? and(...whereClauses) : undefined;
 
   const candidateJobs = await db
     .select()

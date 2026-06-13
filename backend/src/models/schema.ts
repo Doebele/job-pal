@@ -134,10 +134,10 @@ export const savedJobs = pgTable('saved_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id, { onDelete: 'cascade' }),
   jobId: uuid('job_id')
     .notNull()
-    .references(() => jobs.id),
+    .references(() => jobs.id, { onDelete: 'cascade' }),
   status: varchar('status', { length: 20 }).default('saved').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
