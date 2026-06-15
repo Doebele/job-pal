@@ -15,6 +15,10 @@ const applicationSchema = z.object({
   coverLetter: z.string().optional().nullable(),
 });
 
+const applicationStatusSchema = z.object({
+  status: z.enum(['pending', 'reviewed', 'accepted', 'rejected']),
+});
+
 // POST /api/applications — Apply for a job
 router.post('/', async (c) => {
   const applicantId = (c as any).user.id;
@@ -64,11 +68,26 @@ router.get('/', async (c) => {
   const userId = (c as any).user.id;
   const role = (c as any).user.role;
 
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
+  const query = c.req.query();
 
   let whereClause: any;
   if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
+    const jobId = z.string().uuid().safeParse(query.jobId);
+    if (!jobId.success) {
+      return c.json({ error: 'jobId query parameter is required' }, 400);
+    }
+
+    const [job] = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(and(eq(jobs.id, jobId.data), eq(jobs.employerId, userId)))
+      .limit(1);
+
+    if (!job) {
+      return c.json({ error: 'Job not found' }, 404);
+    }
+
+    whereClause = eq(applications.jobId, jobId.data);
   } else {
     whereClause = eq(applications.applicantId, userId);
   }
@@ -101,29 +120,33 @@ router.put('/:id/status', async (c) => {
   const appId = c.req.param('id');
   const body = await c.req.json();
 
-  const [existing] = await db
-    .select()
-    .from(applications)
-    .where(eq(applications.id, appId))
-    .limit(1);
-
-  if (!existing) {
-    return c.json({ error: 'Application not found' }, 404);
-  }
-
   // Only employer can update status
   if ((c as any).user.role !== 'employer') {
     return c.json({ error: 'Unauthorized' }, 403);
   }
 
-  const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
-  if (!validStatuses.includes(body.status)) {
-    return c.json({ error: 'Invalid status' }, 400);
+  const parsed = applicationStatusSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400);
+  }
+
+  const [existing] = await db
+    .select({
+      id: applications.id,
+      employerId: jobs.employerId,
+    })
+    .from(applications)
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(eq(applications.id, appId))
+    .limit(1);
+
+  if (!existing || existing.employerId !== userId) {
+    return c.json({ error: 'Application not found' }, 404);
   }
 
   const [application] = await db
     .update(applications)
-    .set({ status: body.status, updatedAt: new Date() })
+    .set({ status: parsed.data.status, updatedAt: new Date() })
     .where(eq(applications.id, appId))
     .returning();
 
