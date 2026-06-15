@@ -36,14 +36,16 @@ app.use(
 // Health check
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// API routes
-app.route('/api/auth', authRoutes);
-
 // Protected routes — require valid JWT
+app.use('/api/auth/me', authMiddleware);
+app.use('/api/profile', authMiddleware);
 app.use('/api/profile/*', authMiddleware);
 app.use('/api/documents/*', authMiddleware);
+app.use('/api/match', authMiddleware);
 app.use('/api/match/*', authMiddleware);
+app.use('/api/applications', authMiddleware);
 app.use('/api/applications/*', authMiddleware);
+app.use('/api/saved-jobs', authMiddleware);
 app.use('/api/saved-jobs/*', authMiddleware);
 app.use('/api/jobs/mine', authMiddleware);
 app.use('/api/jobs', async (c, next) => {
@@ -59,6 +61,8 @@ app.use('/api/jobs/*', async (c, next) => {
   await next();
 });
 
+// API routes
+app.route('/api/auth', authRoutes);
 app.route('/api/profile', profileRoutes);
 app.route('/api/documents', documentRoutes);
 app.route('/api/jobs', jobRoutes);
