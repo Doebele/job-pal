@@ -64,11 +64,13 @@ router.get('/', async (c) => {
   const userId = (c as any).user.id;
   const role = (c as any).user.role;
 
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
+  const query = c.req.query();
 
   let whereClause: any;
   if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
+    whereClause = query.jobId
+      ? and(eq(applications.jobId, query.jobId), eq(jobs.employerId, userId))
+      : eq(jobs.employerId, userId);
   } else {
     whereClause = eq(applications.applicantId, userId);
   }
@@ -101,19 +103,20 @@ router.put('/:id/status', async (c) => {
   const appId = c.req.param('id');
   const body = await c.req.json();
 
+  // Nur der Arbeitgeber des zugehoerigen Jobs darf den Bewerbungsstatus aendern.
+  if ((c as any).user.role !== 'employer') {
+    return c.json({ error: 'Unauthorized' }, 403);
+  }
+
   const [existing] = await db
-    .select()
+    .select({ id: applications.id })
     .from(applications)
-    .where(eq(applications.id, appId))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(and(eq(applications.id, appId), eq(jobs.employerId, userId)))
     .limit(1);
 
   if (!existing) {
     return c.json({ error: 'Application not found' }, 404);
-  }
-
-  // Only employer can update status
-  if ((c as any).user.role !== 'employer') {
-    return c.json({ error: 'Unauthorized' }, 403);
   }
 
   const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
