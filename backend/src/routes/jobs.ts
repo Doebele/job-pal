@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { jobs, savedJobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
@@ -54,6 +54,16 @@ router.get('/search', async (c) => {
 // GET /api/jobs/sources — available sources and their configuration status
 router.get('/sources', async (c) => {
   return c.json({ sources: getSourceStatus() });
+});
+
+// GET /api/jobs/categories
+router.get('/categories', async (c) => {
+  return c.json({ categories: JOB_KATEGORIEN });
+});
+
+// GET /api/jobs/kantone
+router.get('/kantone', async (c) => {
+  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 // GET /api/jobs — List with optional filters
@@ -201,7 +211,10 @@ router.delete('/:id', async (c) => {
     return c.json({ error: 'Job not found' }, 404);
   }
 
-  await db.delete(jobs).where(eq(jobs.id, jobId));
+  await db.transaction(async (tx) => {
+    await tx.delete(savedJobs).where(eq(savedJobs.jobId, jobId));
+    await tx.delete(jobs).where(eq(jobs.id, jobId));
+  });
 
   return c.json({ ok: true });
 });
@@ -220,16 +233,6 @@ router.get('/:id', async (c) => {
   }
 
   return c.json({ job });
-});
-
-// GET /api/jobs/categories
-router.get('/categories', async (c) => {
-  return c.json({ categories: JOB_KATEGORIEN });
-});
-
-// GET /api/jobs/kantone
-router.get('/kantone', async (c) => {
-  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 export default router;
