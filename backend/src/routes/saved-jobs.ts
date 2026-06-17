@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { savedJobs, jobs } from '../models/schema';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 const router = new Hono();
 
@@ -37,23 +37,23 @@ router.post('/', async (c) => {
     return c.json({ error: 'Job nicht gefunden oder nicht veröffentlicht' }, 404);
   }
 
-  // Upsert: if row exists for this user+job, return it (idempotent)
+  const [savedJob] = await db
+    .insert(savedJobs)
+    .values({ userId, jobId: parsed.data.jobId })
+    .onConflictDoNothing({ target: [savedJobs.userId, savedJobs.jobId] })
+    .returning();
+
+  if (savedJob) {
+    return c.json({ savedJob }, 201);
+  }
+
   const [existing] = await db
     .select()
     .from(savedJobs)
     .where(and(eq(savedJobs.userId, userId), eq(savedJobs.jobId, parsed.data.jobId)))
     .limit(1);
 
-  if (existing) {
-    return c.json({ savedJob: existing }, 200);
-  }
-
-  const [savedJob] = await db
-    .insert(savedJobs)
-    .values({ userId, jobId: parsed.data.jobId })
-    .returning();
-
-  return c.json({ savedJob }, 201);
+  return c.json({ savedJob: existing }, 200);
 });
 
 // GET /api/saved-jobs — List saved jobs
