@@ -13,6 +13,7 @@ import {
   integer,
   uuid,
   primaryKey,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
@@ -134,12 +135,14 @@ export const savedJobs = pgTable('saved_jobs', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id')
     .notNull()
-    .references(() => users.id),
+    .references(() => users.id, { onDelete: 'cascade' }),
   jobId: uuid('job_id')
     .notNull()
-    .references(() => jobs.id),
+    .references(() => jobs.id, { onDelete: 'cascade' }),
   status: varchar('status', { length: 20 }).default('saved').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => ({
+  userJobUnique: uniqueIndex('uq_saved_jobs_user_job').on(table.userId, table.jobId),
+}));
