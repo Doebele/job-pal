@@ -5,9 +5,27 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { jobs, savedJobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
+import { verifyToken } from '../services/auth-service';
+
+function getOptionalUser(c: any) {
+  if (c.user) return c.user;
+
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const payload = verifyToken(authHeader.slice(7));
+  if (!payload) return null;
+
+  return {
+    id: payload.userId,
+    email: payload.email,
+    role: payload.role,
+  };
+}
+
 const SCHWEIZER_KANTONE: Record<string, string> = {
   ZH: 'Zürich', BE: 'Bern', LU: 'Luzern', UR: 'Uri', SZ: 'Schwyz',
   OW: 'Obwalden', NW: 'Nidwalden', GL: 'Glarus', ZG: 'Zug', FR: 'Freiburg',
@@ -201,7 +219,10 @@ router.delete('/:id', async (c) => {
     return c.json({ error: 'Job not found' }, 404);
   }
 
-  await db.delete(jobs).where(eq(jobs.id, jobId));
+  await db.transaction(async (tx) => {
+    await tx.delete(savedJobs).where(eq(savedJobs.jobId, jobId));
+    await tx.delete(jobs).where(eq(jobs.id, jobId));
+  });
 
   return c.json({ ok: true });
 });
@@ -212,11 +233,18 @@ router.get('/:id', async (c) => {
   const [job] = await db
     .select()
     .from(jobs)
-    .where(and(eq(jobs.id, jobId), eq(jobs.isPublished, true)))
+    .where(eq(jobs.id, jobId))
     .limit(1);
 
   if (!job) {
     return c.json({ error: 'Job not found' }, 404);
+  }
+
+  if (!job.isPublished) {
+    const user = getOptionalUser(c);
+    if (!user || user.role !== 'employer' || user.id !== job.employerId) {
+      return c.json({ error: 'Job not found' }, 404);
+    }
   }
 
   return c.json({ job });
