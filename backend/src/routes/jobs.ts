@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { applications, jobs, savedJobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
@@ -19,6 +19,12 @@ const SCHWEIZER_KANTONE: Record<string, string> = {
 const JOB_KATEGORIEN = ['Lehre / Ausbildung', 'Schnupperlehre', 'Ferienjob', 'Junior', 'Mid-Level', 'Senior', 'Praktikum', 'Nebstbeschäftigung'];
 
 const router = new Hono();
+
+const isForeignKeyViolation = (error: unknown) =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  (error as { code?: string }).code === '23503';
 
 const jobSchema = z.object({
   title: z.string().min(1).max(255),
@@ -148,6 +154,16 @@ router.get('/mine', async (c) => {
   return c.json({ jobs: result });
 });
 
+// GET /api/jobs/categories
+router.get('/categories', async (c) => {
+  return c.json({ categories: JOB_KATEGORIEN });
+});
+
+// GET /api/jobs/kantone
+router.get('/kantone', async (c) => {
+  return c.json({ kantone: SCHWEIZER_KANTONE });
+});
+
 // PATCH /api/jobs/:id — Update
 router.patch('/:id', async (c) => {
   if (!(c as any).user || (c as any).user.role !== 'employer') {
@@ -201,7 +217,25 @@ router.delete('/:id', async (c) => {
     return c.json({ error: 'Job not found' }, 404);
   }
 
-  await db.delete(jobs).where(eq(jobs.id, jobId));
+  const [blockingApplication] = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(eq(applications.jobId, jobId))
+    .limit(1);
+
+  if (blockingApplication) {
+    return c.json({ error: 'Job has applications and cannot be deleted' }, 409);
+  }
+
+  try {
+    await db.delete(savedJobs).where(eq(savedJobs.jobId, jobId));
+    await db.delete(jobs).where(eq(jobs.id, jobId));
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      return c.json({ error: 'Job has applications and cannot be deleted' }, 409);
+    }
+    throw error;
+  }
 
   return c.json({ ok: true });
 });
@@ -220,16 +254,6 @@ router.get('/:id', async (c) => {
   }
 
   return c.json({ job });
-});
-
-// GET /api/jobs/categories
-router.get('/categories', async (c) => {
-  return c.json({ categories: JOB_KATEGORIEN });
-});
-
-// GET /api/jobs/kantone
-router.get('/kantone', async (c) => {
-  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 export default router;

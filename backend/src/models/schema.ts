@@ -137,7 +137,7 @@ export const savedJobs = pgTable('saved_jobs', {
     .references(() => users.id),
   jobId: uuid('job_id')
     .notNull()
-    .references(() => jobs.id),
+    .references(() => jobs.id, { onDelete: 'cascade' }),
   status: varchar('status', { length: 20 }).default('saved').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
