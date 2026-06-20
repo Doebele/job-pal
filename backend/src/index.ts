@@ -40,16 +40,11 @@ app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOStri
 app.route('/api/auth', authRoutes);
 
 // Protected routes — require valid JWT
-const protectRoute = (path: string) => {
-  app.use(path, authMiddleware);
-  app.use(`${path}/*`, authMiddleware);
-};
-
-protectRoute('/api/profile');
-protectRoute('/api/documents');
-protectRoute('/api/match');
-protectRoute('/api/applications');
-protectRoute('/api/saved-jobs');
+app.use('/api/profile/*', authMiddleware);
+app.use('/api/documents/*', authMiddleware);
+app.use('/api/match/*', authMiddleware);
+app.use('/api/applications/*', authMiddleware);
+app.use('/api/saved-jobs/*', authMiddleware);
 app.use('/api/jobs/mine', authMiddleware);
 app.use('/api/jobs', async (c, next) => {
   if (c.req.method === 'POST') {
