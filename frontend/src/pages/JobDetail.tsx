@@ -8,6 +8,7 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import { SCHWEIZER_KANTONE } from '@shared/constants';
 import { useSavedJobsStore } from '../stores/saved-jobs-store';
+import { useAuthStore } from '../stores/auth-store';
 import api from '../lib/api';
 
 export default function JobDetail() {
@@ -20,7 +21,9 @@ export default function JobDetail() {
   const [showApply, setShowApply] = useState(false);
   const [coverLetter, setCoverLetter] = useState('');
   const { toggleBookmark, items } = useSavedJobsStore();
+  const { user } = useAuthStore();
   const isSaved = items.some((i) => i.jobId === id);
+  const canApply = user?.role === 'student';
 
   const cantonLabel = job?.canton ? SCHWEIZER_KANTONE[job.canton] || job.canton : '';
 
@@ -122,12 +125,14 @@ export default function JobDetail() {
                   <path d="M4 2h8v12l-4-3-4 3V2z" />
                 </svg>
               </button>
-              <Button
-                variant="primary"
-                onClick={() => setShowApply(true)}
-              >
-                Bewerben
-              </Button>
+              {canApply && (
+                <Button
+                  variant="primary"
+                  onClick={() => setShowApply(true)}
+                >
+                  Bewerben
+                </Button>
+              )}
             </div>
           </div>
 
@@ -147,10 +152,7 @@ export default function JobDetail() {
         {/* Description */}
         <div className="bp-card">
           <span className="t-label text-fg-3 mb-2 block">Stellenbeschreibung</span>
-          <div
-            className="t-body text-fg-2"
-            dangerouslySetInnerHTML={{ __html: job.description }}
-          />
+          <p className="t-body text-fg-2 whitespace-pre-line">{job.description}</p>
         </div>
 
         {/* Application deadline */}

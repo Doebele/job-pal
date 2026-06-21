@@ -14,12 +14,21 @@ const applicationSchema = z.object({
   jobId: z.string().uuid(),
   coverLetter: z.string().optional().nullable(),
 });
+const statusSchema = z.object({
+  status: z.enum(['pending', 'reviewed', 'accepted', 'rejected']),
+});
+const uuidSchema = z.string().uuid();
 
 // POST /api/applications — Apply for a job
 router.post('/', async (c) => {
   const applicantId = (c as any).user.id;
+  const role = (c as any).user.role;
   const body = await c.req.json();
   const parsed = applicationSchema.safeParse(body);
+
+  if (role !== 'student') {
+    return c.json({ error: 'Only students can apply for jobs' }, 403);
+  }
 
   if (!parsed.success) {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten() }, 400);
@@ -63,14 +72,24 @@ router.post('/', async (c) => {
 router.get('/', async (c) => {
   const userId = (c as any).user.id;
   const role = (c as any).user.role;
-
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
+  const jobId = c.req.query('jobId');
 
   let whereClause: any;
   if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
-  } else {
+    if (jobId) {
+      const parsedJobId = uuidSchema.safeParse(jobId);
+      if (!parsedJobId.success) {
+        return c.json({ error: 'Invalid jobId' }, 400);
+      }
+
+      whereClause = and(eq(applications.jobId, parsedJobId.data), eq(jobs.employerId, userId));
+    } else {
+      whereClause = eq(jobs.employerId, userId);
+    }
+  } else if (role === 'student') {
     whereClause = eq(applications.applicantId, userId);
+  } else {
+    return c.json({ error: 'Unauthorized' }, 403);
   }
 
   const appList = await db
@@ -88,7 +107,7 @@ router.get('/', async (c) => {
       },
     })
     .from(applications)
-    .leftJoin(jobs, eq(applications.jobId, jobs.id))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
     .where(whereClause)
     .orderBy(applications.appliedAt);
 
@@ -100,31 +119,36 @@ router.put('/:id/status', async (c) => {
   const userId = (c as any).user.id;
   const appId = c.req.param('id');
   const body = await c.req.json();
+  const parsedAppId = uuidSchema.safeParse(appId);
+  const parsedBody = statusSchema.safeParse(body);
+
+  if ((c as any).user.role !== 'employer') {
+    return c.json({ error: 'Unauthorized' }, 403);
+  }
+
+  if (!parsedAppId.success) {
+    return c.json({ error: 'Invalid application id' }, 400);
+  }
+
+  if (!parsedBody.success) {
+    return c.json({ error: 'Invalid status' }, 400);
+  }
 
   const [existing] = await db
-    .select()
+    .select({ id: applications.id })
     .from(applications)
-    .where(eq(applications.id, appId))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(and(eq(applications.id, parsedAppId.data), eq(jobs.employerId, userId)))
     .limit(1);
 
   if (!existing) {
     return c.json({ error: 'Application not found' }, 404);
   }
 
-  // Only employer can update status
-  if ((c as any).user.role !== 'employer') {
-    return c.json({ error: 'Unauthorized' }, 403);
-  }
-
-  const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
-  if (!validStatuses.includes(body.status)) {
-    return c.json({ error: 'Invalid status' }, 400);
-  }
-
   const [application] = await db
     .update(applications)
-    .set({ status: body.status, updatedAt: new Date() })
-    .where(eq(applications.id, appId))
+    .set({ status: parsedBody.data.status, updatedAt: new Date() })
+    .where(eq(applications.id, parsedAppId.data))
     .returning();
 
   return c.json({ application });
