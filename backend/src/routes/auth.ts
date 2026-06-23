@@ -6,12 +6,17 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { users, passwordResets } from '../models/schema';
-import { createToken, verifyToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
+import { createToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
 import { generateResetToken } from '../services/auth-service';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email-service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const router = new Hono();
+
+const TOKEN_PURPOSE = {
+  emailVerification: 'email_verification',
+  passwordReset: 'password_reset',
+} as const;
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -42,7 +47,6 @@ router.post('/register', async (c) => {
     }
 
     const passwordHash = await hashRegistrationPassword(password);
-    const resetToken = generateResetToken();
 
     const [user] = await db
       .insert(users)
@@ -63,6 +67,7 @@ router.post('/register', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token: verifyToken,
+      purpose: TOKEN_PURPOSE.emailVerification,
       expiresAt,
     });
 
@@ -195,6 +200,7 @@ router.post('/forgot-password', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token,
+      purpose: TOKEN_PURPOSE.passwordReset,
       expiresAt,
     });
 
@@ -228,7 +234,10 @@ router.post('/reset-password', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, TOKEN_PURPOSE.passwordReset),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
@@ -282,7 +291,10 @@ router.post('/verify-email', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, TOKEN_PURPOSE.emailVerification),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
