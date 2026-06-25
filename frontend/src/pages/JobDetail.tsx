@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { Input } from '../components/ui/Input';
 import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import { SCHWEIZER_KANTONE } from '@shared/constants';
@@ -147,10 +146,7 @@ export default function JobDetail() {
         {/* Description */}
         <div className="bp-card">
           <span className="t-label text-fg-3 mb-2 block">Stellenbeschreibung</span>
-          <div
-            className="t-body text-fg-2"
-            dangerouslySetInnerHTML={{ __html: job.description }}
-          />
+          <p className="t-body text-fg-2 whitespace-pre-line">{job.description}</p>
         </div>
 
         {/* Application deadline */}
