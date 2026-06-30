@@ -9,7 +9,7 @@ import { users, passwordResets } from '../models/schema';
 import { createToken, verifyToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
 import { generateResetToken } from '../services/auth-service';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email-service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const router = new Hono();
 
@@ -55,7 +55,6 @@ router.post('/register', async (c) => {
       })
       .returning();
 
-    // Store verification token in password_resets table (reuses the same schema)
     const verifyToken = generateResetToken();
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
@@ -63,6 +62,7 @@ router.post('/register', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token: verifyToken,
+      purpose: 'email_verification',
       expiresAt,
     });
 
@@ -195,6 +195,7 @@ router.post('/forgot-password', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token,
+      purpose: 'password_reset',
       expiresAt,
     });
 
@@ -228,7 +229,10 @@ router.post('/reset-password', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, 'password_reset'),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
@@ -282,7 +286,10 @@ router.post('/verify-email', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, 'email_verification'),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {

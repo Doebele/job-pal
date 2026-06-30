@@ -3,9 +3,9 @@
 -- ==============================================================================
 
 CREATE TABLE IF NOT EXISTS saved_jobs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id),
-  job_id UUID NOT NULL REFERENCES jobs(id),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   status VARCHAR(20) NOT NULL DEFAULT 'saved',
   note TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
