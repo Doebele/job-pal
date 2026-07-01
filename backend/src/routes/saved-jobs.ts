@@ -16,6 +16,21 @@ const jobIdSchema = z.object({
 
 const validStatuses = ['saved', 'contacted', 'application_sent', 'rejected', 'invited'];
 
+const withJob = (savedJob: typeof savedJobs.$inferSelect, job: typeof jobs.$inferSelect) => ({
+  ...savedJob,
+  job: {
+    title: job.title,
+    category: job.category,
+    location: job.location,
+    canton: job.canton,
+    salaryMin: job.salaryMin,
+    salaryMax: job.salaryMax,
+    salaryCurrency: job.salaryCurrency,
+    isPublished: job.isPublished,
+    createdAt: job.createdAt,
+  },
+});
+
 // POST /api/saved-jobs — Save/bookmark a job (idempotent)
 router.post('/', async (c) => {
   const userId = (c as any).user.id;
@@ -45,7 +60,7 @@ router.post('/', async (c) => {
     .limit(1);
 
   if (existing) {
-    return c.json({ savedJob: existing }, 200);
+    return c.json({ savedJob: withJob(existing, job) }, 200);
   }
 
   const [savedJob] = await db
@@ -53,13 +68,13 @@ router.post('/', async (c) => {
     .values({ userId, jobId: parsed.data.jobId })
     .returning();
 
-  return c.json({ savedJob }, 201);
+  return c.json({ savedJob: withJob(savedJob, job) }, 201);
 });
 
 // GET /api/saved-jobs — List saved jobs
 router.get('/', async (c) => {
   const userId = (c as any).user.id;
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
+  const query = c.req.query();
 
   const whereClauses = [eq(savedJobs.userId, userId)];
 

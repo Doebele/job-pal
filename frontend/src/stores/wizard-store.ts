@@ -103,8 +103,14 @@ export const useWizardStore = create<WizardState>()(
           await api.put('/profile', get().draft);
         } catch (e: any) {
           if (e.response?.status === 404) {
-            set({ isSaving: false });
-            await api.post('/profile', get().draft);
+            try {
+              await api.post('/profile', get().draft);
+            } catch (createError: any) {
+              set({
+                saveError: createError.response?.data?.error || createError.message || 'Speichern fehlgeschlagen',
+              });
+              throw createError;
+            }
           } else {
             set({ isSaving: false, saveError: e.response?.data?.error || e.message || 'Speichern fehlgeschlagen' });
             throw e;
