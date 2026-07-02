@@ -17,7 +17,12 @@ const applicationSchema = z.object({
 
 // POST /api/applications — Apply for a job
 router.post('/', async (c) => {
-  const applicantId = (c as any).user.id;
+  const user = (c as any).user;
+  if (user.role !== 'student') {
+    return c.json({ error: 'Only students can apply to jobs' }, 403);
+  }
+
+  const applicantId = user.id;
   const body = await c.req.json();
   const parsed = applicationSchema.safeParse(body);
 
@@ -61,16 +66,22 @@ router.post('/', async (c) => {
 
 // GET /api/applications — List applications
 router.get('/', async (c) => {
-  const userId = (c as any).user.id;
-  const role = (c as any).user.role;
+  const user = (c as any).user;
+  const query = c.req.query();
 
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
-
-  let whereClause: any;
-  if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
+  let whereClause;
+  if (user.role === 'employer') {
+    const clauses = [eq(jobs.employerId, user.id)];
+    if (query.jobId) {
+      const parsedJobId = z.string().uuid().safeParse(query.jobId);
+      if (!parsedJobId.success) {
+        return c.json({ error: 'Invalid jobId' }, 400);
+      }
+      clauses.push(eq(applications.jobId, parsedJobId.data));
+    }
+    whereClause = and(...clauses);
   } else {
-    whereClause = eq(applications.applicantId, userId);
+    whereClause = eq(applications.applicantId, user.id);
   }
 
   const appList = await db
@@ -97,23 +108,24 @@ router.get('/', async (c) => {
 
 // PUT /api/applications/:id/status — Update status
 router.put('/:id/status', async (c) => {
-  const userId = (c as any).user.id;
+  const user = (c as any).user;
   const appId = c.req.param('id');
   const body = await c.req.json();
 
+  if (user.role !== 'employer') {
+    return c.json({ error: 'Unauthorized' }, 403);
+  }
+
+  // Only the employer that owns the job can update application status.
   const [existing] = await db
-    .select()
+    .select({ id: applications.id })
     .from(applications)
-    .where(eq(applications.id, appId))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(and(eq(applications.id, appId), eq(jobs.employerId, user.id)))
     .limit(1);
 
   if (!existing) {
     return c.json({ error: 'Application not found' }, 404);
-  }
-
-  // Only employer can update status
-  if ((c as any).user.role !== 'employer') {
-    return c.json({ error: 'Unauthorized' }, 403);
   }
 
   const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
