@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { applications, jobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
@@ -199,6 +199,16 @@ router.delete('/:id', async (c) => {
 
   if (!existing || existing.employerId !== employerId) {
     return c.json({ error: 'Job not found' }, 404);
+  }
+
+  const [existingApplication] = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(eq(applications.jobId, jobId))
+    .limit(1);
+
+  if (existingApplication) {
+    return c.json({ error: 'Job has applications and cannot be deleted' }, 409);
   }
 
   await db.delete(jobs).where(eq(jobs.id, jobId));
