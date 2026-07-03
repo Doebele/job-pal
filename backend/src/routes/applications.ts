@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { applications, jobs } from '../models/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 
 const router = new Hono();
 
@@ -17,7 +17,12 @@ const applicationSchema = z.object({
 
 // POST /api/applications — Apply for a job
 router.post('/', async (c) => {
-  const applicantId = (c as any).user.id;
+  const user = (c as any).user;
+  if (!user || user.role !== 'student') {
+    return c.json({ error: 'Only students can apply to jobs' }, 403);
+  }
+
+  const applicantId = user.id;
   const body = await c.req.json();
   const parsed = applicationSchema.safeParse(body);
 
@@ -64,11 +69,14 @@ router.get('/', async (c) => {
   const userId = (c as any).user.id;
   const role = (c as any).user.role;
 
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
-
   let whereClause: any;
   if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
+    const query = c.req.query();
+    const employerClauses: any[] = [eq(jobs.employerId, userId)];
+    if (query.jobId) {
+      employerClauses.push(eq(applications.jobId, query.jobId));
+    }
+    whereClause = and(...employerClauses);
   } else {
     whereClause = eq(applications.applicantId, userId);
   }
@@ -88,9 +96,9 @@ router.get('/', async (c) => {
       },
     })
     .from(applications)
-    .leftJoin(jobs, eq(applications.jobId, jobs.id))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
     .where(whereClause)
-    .orderBy(applications.appliedAt);
+    .orderBy(desc(applications.appliedAt));
 
   return c.json({ applications: appList });
 });
@@ -98,22 +106,22 @@ router.get('/', async (c) => {
 // PUT /api/applications/:id/status — Update status
 router.put('/:id/status', async (c) => {
   const userId = (c as any).user.id;
+  if ((c as any).user.role !== 'employer') {
+    return c.json({ error: 'Unauthorized' }, 403);
+  }
+
   const appId = c.req.param('id');
   const body = await c.req.json();
 
   const [existing] = await db
-    .select()
+    .select({ id: applications.id })
     .from(applications)
-    .where(eq(applications.id, appId))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(and(eq(applications.id, appId), eq(jobs.employerId, userId)))
     .limit(1);
 
   if (!existing) {
     return c.json({ error: 'Application not found' }, 404);
-  }
-
-  // Only employer can update status
-  if ((c as any).user.role !== 'employer') {
-    return c.json({ error: 'Unauthorized' }, 403);
   }
 
   const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
