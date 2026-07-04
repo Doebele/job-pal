@@ -6,9 +6,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { users, passwordResets } from '../models/schema';
-import { createToken, verifyToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
+import { createToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
 import { generateResetToken } from '../services/auth-service';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email-service';
+import { authMiddleware } from '../middleware/auth';
 import { eq } from 'drizzle-orm';
 
 const router = new Hono();
@@ -151,7 +152,7 @@ router.post('/logout', async (c) => {
 });
 
 // GET /api/auth/me
-router.get('/me', async (c) => {
+router.get('/me', authMiddleware, async (c) => {
   const user = (c as any).user;
   if (!user) {
     return c.json({ error: 'Unauthorized' }, 401);

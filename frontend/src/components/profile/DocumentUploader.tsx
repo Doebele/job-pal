@@ -43,6 +43,24 @@ export function DocumentUploader() {
     }
   };
 
+  const handleDownload = async (doc: DocumentFile) => {
+    try {
+      const res = await api.get(`/documents/${doc.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.originalName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -78,14 +96,13 @@ export function DocumentUploader() {
                 <Badge variant="info">
                   {doc.mimeType.split('/')[1]?.toUpperCase()}
                 </Badge>
-                <a
-                  href={`/api/documents/${doc.id}/download`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => handleDownload(doc)}
                   className="bp-btn-ghost text-t-body-sm"
                 >
                   Download
-                </a>
+                </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
                   className="bp-btn-ghost text-t-body-sm text-fg-3 hover:text-red"
