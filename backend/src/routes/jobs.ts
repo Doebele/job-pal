@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { applications, jobs, savedJobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
@@ -148,6 +148,16 @@ router.get('/mine', async (c) => {
   return c.json({ jobs: result });
 });
 
+// GET /api/jobs/categories
+router.get('/categories', async (c) => {
+  return c.json({ categories: JOB_KATEGORIEN });
+});
+
+// GET /api/jobs/kantone
+router.get('/kantone', async (c) => {
+  return c.json({ kantone: SCHWEIZER_KANTONE });
+});
+
 // PATCH /api/jobs/:id — Update
 router.patch('/:id', async (c) => {
   if (!(c as any).user || (c as any).user.role !== 'employer') {
@@ -201,6 +211,17 @@ router.delete('/:id', async (c) => {
     return c.json({ error: 'Job not found' }, 404);
   }
 
+  const existingApplications = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(eq(applications.jobId, jobId))
+    .limit(1);
+
+  if (existingApplications.length > 0) {
+    return c.json({ error: 'Job has applications and cannot be deleted' }, 409);
+  }
+
+  await db.delete(savedJobs).where(eq(savedJobs.jobId, jobId));
   await db.delete(jobs).where(eq(jobs.id, jobId));
 
   return c.json({ ok: true });
@@ -220,16 +241,6 @@ router.get('/:id', async (c) => {
   }
 
   return c.json({ job });
-});
-
-// GET /api/jobs/categories
-router.get('/categories', async (c) => {
-  return c.json({ categories: JOB_KATEGORIEN });
-});
-
-// GET /api/jobs/kantone
-router.get('/kantone', async (c) => {
-  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 export default router;
