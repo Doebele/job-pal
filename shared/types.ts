@@ -119,6 +119,7 @@ export interface PasswordResetToken {
   id: string;
   userId: string;
   token: string;
+  purpose: 'email_verification' | 'password_reset';
   expiresAt: Date;
   createdAt: Date;
 }
