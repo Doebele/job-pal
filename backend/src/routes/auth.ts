@@ -6,10 +6,11 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { users, passwordResets } from '../models/schema';
-import { createToken, verifyToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
+import { createToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
 import { generateResetToken } from '../services/auth-service';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email-service';
-import { eq } from 'drizzle-orm';
+import { authMiddleware } from '../middleware/auth';
+import { and, eq } from 'drizzle-orm';
 
 const router = new Hono();
 
@@ -63,6 +64,7 @@ router.post('/register', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token: verifyToken,
+      purpose: 'email_verification',
       expiresAt,
     });
 
@@ -150,6 +152,8 @@ router.post('/logout', async (c) => {
   return c.json({ message: 'Logged out successfully' });
 });
 
+router.use('/me', authMiddleware);
+
 // GET /api/auth/me
 router.get('/me', async (c) => {
   const user = (c as any).user;
@@ -195,6 +199,7 @@ router.post('/forgot-password', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token,
+      purpose: 'password_reset',
       expiresAt,
     });
 
@@ -228,7 +233,7 @@ router.post('/reset-password', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(eq(passwordResets.token, parsed.data.token), eq(passwordResets.purpose, 'password_reset')))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
@@ -282,7 +287,7 @@ router.post('/verify-email', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(eq(passwordResets.token, parsed.data.token), eq(passwordResets.purpose, 'email_verification')))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
