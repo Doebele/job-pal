@@ -11,7 +11,7 @@ import { eq, and } from 'drizzle-orm';
 const router = new Hono();
 
 const matchSchema = z.object({
-  profileId: z.string(),
+  profileId: z.string().uuid(),
   category: z.string().optional(),
   canton: z.string().optional(),
   limit: z.number().default(10),
@@ -19,6 +19,7 @@ const matchSchema = z.object({
 
 // POST /api/match
 router.post('/', async (c) => {
+  const userId = (c as any).user.id;
   const body = await c.req.json();
   const parsed = matchSchema.safeParse(body);
 
@@ -32,7 +33,7 @@ router.post('/', async (c) => {
   const [profile] = await db
     .select()
     .from(profiles)
-    .where(eq(profiles.id, profileId))
+    .where(and(eq(profiles.id, profileId), eq(profiles.userId, userId)))
     .limit(1);
 
   if (!profile) {

@@ -95,6 +95,7 @@ export const useSavedJobsStore = create<SavedJobsState>()((set, get) => ({
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Status-Aktualisierung fehlgeschlagen';
       set({ error: message, isSaving: false });
+      throw err;
     }
   },
 
@@ -110,6 +111,7 @@ export const useSavedJobsStore = create<SavedJobsState>()((set, get) => ({
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Notiz-Aktualisierung fehlgeschlagen';
       set({ error: message, isSaving: false });
+      throw err;
     }
   },
 
@@ -121,6 +123,7 @@ export const useSavedJobsStore = create<SavedJobsState>()((set, get) => ({
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Entfernen fehlgeschlagen';
       set({ error: message, isSaving: false });
+      throw err;
     }
   },
 

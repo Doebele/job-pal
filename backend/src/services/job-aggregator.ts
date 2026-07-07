@@ -189,6 +189,7 @@ export async function searchJobs(params: SearchParams): Promise<AggregatedJob[]>
 
   const tasks: Promise<AggregatedJob[]>[] = [];
   if (sources.includes('job-pal')) tasks.push(searchLocalJobs(params));
+  if (sources.includes('indeed-ch')) tasks.push(searchIndeed(params));
   if (sources.includes('adzuna')) tasks.push(searchAdzuna(params));
 
   const settled = await Promise.allSettled(tasks);
@@ -210,6 +211,7 @@ export async function searchJobs(params: SearchParams): Promise<AggregatedJob[]>
 export function getSourceStatus(): Array<{ id: string; configured: boolean }> {
   return [
     { id: 'job-pal', configured: true },
+    { id: 'indeed-ch', configured: true },
     { id: 'adzuna', configured: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) },
   ];
 }

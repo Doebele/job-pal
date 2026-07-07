@@ -27,14 +27,22 @@ export default function SavedJobs() {
   }, [statusFilter]);
 
   const handleStatusChange = async (savedJobId: string, status: string) => {
-    await updateStatus(savedJobId, status as any);
-    addToast('Status aktualisiert', 'success');
+    try {
+      await updateStatus(savedJobId, status as any);
+      addToast('Status aktualisiert', 'success');
+    } catch {
+      addToast('Status konnte nicht aktualisiert werden', 'error');
+    }
   };
 
   const handleRemove = async (savedJobId: string) => {
     if (!window.confirm('Job aus der Liste entfernen?')) return;
-    await removeSavedJob(savedJobId);
-    addToast('Job entfernt', 'success');
+    try {
+      await removeSavedJob(savedJobId);
+      addToast('Job entfernt', 'success');
+    } catch {
+      addToast('Job konnte nicht entfernt werden', 'error');
+    }
   };
 
   if (isLoading) {
