@@ -5,43 +5,37 @@ import { JobFilterBar } from '../components/matching/JobFilterBar';
 import { Button } from '../components/ui/Button';
 import { Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
+import { useSourcesStore } from '../stores/sources-store';
 import api from '../lib/api';
-import type { AggregatedJob, Job } from '@shared/types';
+import type { AggregatedJob } from '@shared/types';
 
 export default function JobList() {
   const [jobs, setJobs] = useState<AggregatedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const { addToast } = useToast();
+  const enabledSourceIds = useSourcesStore((state) => state.enabledSourceIds);
+  const sourceParam = enabledSourceIds.join(',');
 
   useEffect(() => {
     loadJobs();
-  }, [filters]);
+  }, [filters, sourceParam]);
 
   const loadJobs = async () => {
     setLoading(true);
+    if (enabledSourceIds.length === 0) {
+      setJobs([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      if (sourceParam) params.set('sources', sourceParam);
 
-      const res = await api.get(`/jobs?${params}`);
-      const result: Job[] = res.data.jobs;
-      const mapped: AggregatedJob[] = result.map((job) => ({
-        id: job.id,
-        title: job.title,
-        description: job.description,
-        location: job.location,
-        canton: job.canton,
-        category: job.category,
-        salaryMin: job.salaryMin,
-        salaryMax: job.salaryMax,
-        salaryCurrency: job.salaryCurrency,
-        source: 'job-pal',
-        sourceName: 'Job-Pal',
-        url: `/jobs/${job.id}`,
-        publishedAt: job.createdAt ? new Date(job.createdAt).toISOString() : undefined,
-      }));
-      setJobs(mapped);
+      const res = await api.get(`/jobs/search?${params}`);
+      setJobs(res.data.jobs);
     } catch {
       addToast('Stellenangebote konnten nicht geladen werden', 'error');
     } finally {
