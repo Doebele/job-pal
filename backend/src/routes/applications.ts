@@ -15,8 +15,16 @@ const applicationSchema = z.object({
   coverLetter: z.string().optional().nullable(),
 });
 
+const statusSchema = z.object({
+  status: z.enum(['pending', 'reviewed', 'accepted', 'rejected']),
+});
+
 // POST /api/applications — Apply for a job
 router.post('/', async (c) => {
+  if ((c as any).user.role !== 'student') {
+    return c.json({ error: 'Only students can apply to jobs' }, 403);
+  }
+
   const applicantId = (c as any).user.id;
   const body = await c.req.json();
   const parsed = applicationSchema.safeParse(body);
@@ -64,11 +72,14 @@ router.get('/', async (c) => {
   const userId = (c as any).user.id;
   const role = (c as any).user.role;
 
-  const query = Object.fromEntries(new URLSearchParams(c.req.url).entries());
-
+  const jobId = c.req.query('jobId');
   let whereClause: any;
   if (role === 'employer') {
-    whereClause = eq(applications.jobId, query.jobId);
+    const conditions: any[] = [eq(jobs.employerId, userId)];
+    if (jobId) {
+      conditions.push(eq(applications.jobId, jobId));
+    }
+    whereClause = and(...conditions);
   } else {
     whereClause = eq(applications.applicantId, userId);
   }
@@ -88,7 +99,7 @@ router.get('/', async (c) => {
       },
     })
     .from(applications)
-    .leftJoin(jobs, eq(applications.jobId, jobs.id))
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
     .where(whereClause)
     .orderBy(applications.appliedAt);
 
@@ -99,31 +110,32 @@ router.get('/', async (c) => {
 router.put('/:id/status', async (c) => {
   const userId = (c as any).user.id;
   const appId = c.req.param('id');
-  const body = await c.req.json();
-
-  const [existing] = await db
-    .select()
-    .from(applications)
-    .where(eq(applications.id, appId))
-    .limit(1);
-
-  if (!existing) {
-    return c.json({ error: 'Application not found' }, 404);
-  }
 
   // Only employer can update status
   if ((c as any).user.role !== 'employer') {
     return c.json({ error: 'Unauthorized' }, 403);
   }
 
-  const validStatuses = ['pending', 'reviewed', 'accepted', 'rejected'];
-  if (!validStatuses.includes(body.status)) {
+  const body = await c.req.json();
+  const parsed = statusSchema.safeParse(body);
+  if (!parsed.success) {
     return c.json({ error: 'Invalid status' }, 400);
+  }
+
+  const [existing] = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .innerJoin(jobs, eq(applications.jobId, jobs.id))
+    .where(and(eq(applications.id, appId), eq(jobs.employerId, userId)))
+    .limit(1);
+
+  if (!existing) {
+    return c.json({ error: 'Application not found' }, 404);
   }
 
   const [application] = await db
     .update(applications)
-    .set({ status: body.status, updatedAt: new Date() })
+    .set({ status: parsed.data.status, updatedAt: new Date() })
     .where(eq(applications.id, appId))
     .returning();
 
