@@ -2,8 +2,7 @@
 // Document Routes — Upload, list, download, delete
 // ==============================================================================
 
-import { Hono } from 'hono';
-import multer from 'multer';
+import { Hono, type Context } from 'hono';
 import { db } from '../db';
 import { documents } from '../models/schema';
 import { eq } from 'drizzle-orm';
@@ -14,58 +13,88 @@ import * as mammoth from 'mammoth';
 
 const router = new Hono();
 
-// Configure multer for memory storage
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: config.MAX_FILE_SIZE,
-  },
-  fileFilter: (_req, file, cb) => {
-    // Allow common document types
-    const allowed = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/png',
-      'image/jpeg',
-    ];
-    if (allowed.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
-    }
-  },
-});
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png',
+  'image/jpeg',
+]);
 
-// POST /api/documents/upload
-router.post('/upload', upload.single('file') as any, async (c) => {
-  const userId = (c as any).user.id;
-  const file = (c as any).file;
+interface ParsedUpload {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+  size: number;
+}
 
-  if (!file) {
-    return c.json({ error: 'No file uploaded' }, 400);
+function isUploadedFile(value: unknown): value is File {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as File).arrayBuffer === 'function' &&
+    typeof (value as File).name === 'string'
+  );
+}
+
+type UploadResult =
+  | { file: ParsedUpload; error?: never }
+  | { file?: never; error: Response };
+
+async function parseUploadedFile(c: Context): Promise<UploadResult> {
+  const body = await c.req.parseBody();
+  const upload = body.file;
+
+  if (!isUploadedFile(upload)) {
+    return { error: c.json({ error: 'No file uploaded' }, 400) };
   }
 
-  try {
-    const uploaded = await uploadFile(file.buffer, file.originalname, file.mimetype);
+  const mimeType = upload.type || 'application/octet-stream';
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    return { error: c.json({ error: 'File type not allowed' }, 400) };
+  }
 
-    await db.insert(documents).values({
+  if (upload.size > config.MAX_FILE_SIZE) {
+    return { error: c.json({ error: 'File too large' }, 413) };
+  }
+
+  const buffer = Buffer.from(await upload.arrayBuffer());
+  return {
+    file: {
+      buffer,
+      originalName: upload.name || 'upload.bin',
+      mimeType,
+      size: buffer.length,
+    },
+  };
+}
+
+// POST /api/documents/upload
+router.post('/upload', async (c) => {
+  const userId = (c as any).user.id;
+
+  try {
+    const parsedUpload = await parseUploadedFile(c);
+    if (parsedUpload.error) return parsedUpload.error;
+
+    const uploaded = await uploadFile(parsedUpload.file.buffer, parsedUpload.file.originalName, parsedUpload.file.mimeType);
+
+    const [document] = await db.insert(documents).values({
       userId,
       filename: uploaded.filename,
       originalName: uploaded.originalName,
       mimeType: uploaded.mimeType,
       size: uploaded.size,
-    });
+    }).returning();
 
     return c.json({
       message: 'File uploaded successfully',
       document: {
-        id: uploaded.id,
-        filename: uploaded.filename,
-        originalName: uploaded.originalName,
-        mimeType: uploaded.mimeType,
-        size: uploaded.size,
+        id: document.id,
+        filename: document.filename,
+        originalName: document.originalName,
+        mimeType: document.mimeType,
+        size: document.size,
       },
     }, 201);
   } catch (error) {
@@ -114,7 +143,8 @@ router.get('/:id/download', async (c) => {
     return c.json({ error: 'File not found on storage' }, 404);
   }
 
-  return c.body(buffer.toString('base64'), 200, {
+  const body = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+  return c.body(body, 200, {
     'Content-Type': doc.mimeType,
     'Content-Disposition': `attachment; filename="${doc.originalName}"`,
   });
@@ -145,23 +175,21 @@ router.delete('/:id', async (c) => {
 // POST /api/documents/cv-parse — Parse CV and return structured data
 // ==============================================================================
 
-router.post('/cv-parse', upload.single('file') as any, async (c) => {
-  const file = (c as any).file;
-
-  if (!file) {
-    return c.json({ error: 'No file uploaded' }, 400);
-  }
-
+router.post('/cv-parse', async (c) => {
   try {
+    const parsedUpload = await parseUploadedFile(c);
+    if (parsedUpload.error) return parsedUpload.error;
+    const { file } = parsedUpload;
+
     let text = '';
 
-    if (file.mimetype === 'application/pdf') {
+    if (file.mimeType === 'application/pdf') {
       const pdfData = await pdfParse(file.buffer);
       text = pdfData.text;
-    } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.mimetype === 'application/msword') {
+    } else if (file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.mimeType === 'application/msword') {
       const result = await mammoth.extractRawText({ buffer: file.buffer });
       text = result.value;
-    } else if (file.mimetype?.startsWith('image/')) {
+    } else if (file.mimeType.startsWith('image/')) {
       return c.json({
         data: {
           confidence: 0,

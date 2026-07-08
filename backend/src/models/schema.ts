@@ -100,7 +100,7 @@ export const applications = pgTable('applications', {
     .references(() => users.id),
   jobId: uuid('job_id')
     .notNull()
-    .references(() => jobs.id),
+    .references(() => jobs.id, { onDelete: 'restrict' }),
   coverLetter: text('cover_letter'),
   status: varchar('status', { length: 20 }).default('pending').notNull(),
   appliedAt: timestamp('applied_at').defaultNow().notNull(),
@@ -126,6 +126,7 @@ export const passwordResets = pgTable('password_resets', {
     .notNull()
     .references(() => users.id),
   token: text('token').notNull(),
+  purpose: varchar('purpose', { length: 30 }).default('email_verification').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -137,7 +138,7 @@ export const savedJobs = pgTable('saved_jobs', {
     .references(() => users.id),
   jobId: uuid('job_id')
     .notNull()
-    .references(() => jobs.id),
+    .references(() => jobs.id, { onDelete: 'cascade' }),
   status: varchar('status', { length: 20 }).default('saved').notNull(),
   note: text('note'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
