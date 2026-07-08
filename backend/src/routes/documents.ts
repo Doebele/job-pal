@@ -37,7 +37,11 @@ function isUploadedFile(value: unknown): value is File {
   );
 }
 
-async function parseUploadedFile(c: Context): Promise<{ file?: ParsedUpload; error?: Response }> {
+type UploadResult =
+  | { file: ParsedUpload; error?: never }
+  | { file?: never; error: Response };
+
+async function parseUploadedFile(c: Context): Promise<UploadResult> {
   const body = await c.req.parseBody();
   const upload = body.file;
 
@@ -70,10 +74,10 @@ router.post('/upload', async (c) => {
   const userId = (c as any).user.id;
 
   try {
-    const { file, error } = await parseUploadedFile(c);
-    if (error) return error;
+    const parsedUpload = await parseUploadedFile(c);
+    if (parsedUpload.error) return parsedUpload.error;
 
-    const uploaded = await uploadFile(file.buffer, file.originalName, file.mimeType);
+    const uploaded = await uploadFile(parsedUpload.file.buffer, parsedUpload.file.originalName, parsedUpload.file.mimeType);
 
     const [document] = await db.insert(documents).values({
       userId,
@@ -173,8 +177,9 @@ router.delete('/:id', async (c) => {
 
 router.post('/cv-parse', async (c) => {
   try {
-    const { file, error } = await parseUploadedFile(c);
-    if (error) return error;
+    const parsedUpload = await parseUploadedFile(c);
+    if (parsedUpload.error) return parsedUpload.error;
+    const { file } = parsedUpload;
 
     let text = '';
 
