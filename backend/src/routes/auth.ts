@@ -6,12 +6,18 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
 import { users, passwordResets } from '../models/schema';
+import { authMiddleware } from '../middleware/auth';
 import { createToken, verifyToken, hashRegistrationPassword, comparePassword } from '../services/auth-service';
 import { generateResetToken } from '../services/auth-service';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email-service';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const router = new Hono();
+
+const TOKEN_PURPOSE = {
+  emailVerification: 'email_verification',
+  passwordReset: 'password_reset',
+} as const;
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -63,6 +69,7 @@ router.post('/register', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token: verifyToken,
+      purpose: TOKEN_PURPOSE.emailVerification,
       expiresAt,
     });
 
@@ -151,7 +158,7 @@ router.post('/logout', async (c) => {
 });
 
 // GET /api/auth/me
-router.get('/me', async (c) => {
+router.get('/me', authMiddleware, async (c) => {
   const user = (c as any).user;
   if (!user) {
     return c.json({ error: 'Unauthorized' }, 401);
@@ -195,6 +202,7 @@ router.post('/forgot-password', async (c) => {
     await db.insert(passwordResets).values({
       userId: user.id,
       token,
+      purpose: TOKEN_PURPOSE.passwordReset,
       expiresAt,
     });
 
@@ -228,7 +236,10 @@ router.post('/reset-password', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, TOKEN_PURPOSE.passwordReset),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {
@@ -253,7 +264,7 @@ router.post('/reset-password', async (c) => {
 
     await db
       .delete(passwordResets)
-      .where(eq(passwordResets.id, reset.id));
+      .where(eq(passwordResets.userId, user.id));
 
     return c.json({ message: 'Passwort erfolgreich zurückgesetzt' });
   } catch (error) {
@@ -282,7 +293,10 @@ router.post('/verify-email', async (c) => {
     const [reset] = await db
       .select()
       .from(passwordResets)
-      .where(eq(passwordResets.token, parsed.data.token))
+      .where(and(
+        eq(passwordResets.token, parsed.data.token),
+        eq(passwordResets.purpose, TOKEN_PURPOSE.emailVerification),
+      ))
       .limit(1);
 
     if (!reset || new Date(reset.expiresAt) < new Date()) {

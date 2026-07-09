@@ -19,6 +19,7 @@ const matchSchema = z.object({
 
 // POST /api/match
 router.post('/', async (c) => {
+  const userId = (c as any).user.id;
   const body = await c.req.json();
   const parsed = matchSchema.safeParse(body);
 
@@ -32,7 +33,7 @@ router.post('/', async (c) => {
   const [profile] = await db
     .select()
     .from(profiles)
-    .where(eq(profiles.id, profileId))
+    .where(and(eq(profiles.id, profileId), eq(profiles.userId, userId)))
     .limit(1);
 
   if (!profile) {

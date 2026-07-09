@@ -50,23 +50,24 @@ router.post('/upload', upload.single('file') as any, async (c) => {
   try {
     const uploaded = await uploadFile(file.buffer, file.originalname, file.mimetype);
 
-    await db.insert(documents).values({
+    const [document] = await db.insert(documents).values({
       userId,
       filename: uploaded.filename,
       originalName: uploaded.originalName,
       mimeType: uploaded.mimeType,
       size: uploaded.size,
+    }).returning({
+      id: documents.id,
+      filename: documents.filename,
+      originalName: documents.originalName,
+      mimeType: documents.mimeType,
+      size: documents.size,
+      uploadedAt: documents.uploadedAt,
     });
 
     return c.json({
       message: 'File uploaded successfully',
-      document: {
-        id: uploaded.id,
-        filename: uploaded.filename,
-        originalName: uploaded.originalName,
-        mimeType: uploaded.mimeType,
-        size: uploaded.size,
-      },
+      document,
     }, 201);
   } catch (error) {
     console.error('[Documents] Upload error:', error);
@@ -114,9 +115,11 @@ router.get('/:id/download', async (c) => {
     return c.json({ error: 'File not found on storage' }, 404);
   }
 
-  return c.body(buffer.toString('base64'), 200, {
+  const safeFilename = doc.originalName.replace(/[\r\n"]/g, '_');
+
+  return c.body(Uint8Array.from(buffer), 200, {
     'Content-Type': doc.mimeType,
-    'Content-Disposition': `attachment; filename="${doc.originalName}"`,
+    'Content-Disposition': `attachment; filename="${safeFilename}"`,
   });
 });
 
