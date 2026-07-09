@@ -117,7 +117,7 @@ router.get('/:id/download', async (c) => {
 
   const safeFilename = doc.originalName.replace(/[\r\n"]/g, '_');
 
-  return c.body(buffer, 200, {
+  return c.body(Uint8Array.from(buffer), 200, {
     'Content-Type': doc.mimeType,
     'Content-Disposition': `attachment; filename="${safeFilename}"`,
   });
