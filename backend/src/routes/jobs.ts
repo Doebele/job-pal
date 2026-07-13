@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db';
-import { jobs } from '../models/schema';
+import { applications, jobs, savedJobs } from '../models/schema';
 import { eq, and, or, ilike, desc } from 'drizzle-orm';
 import { searchJobs, getSourceStatus } from '../services/job-aggregator';
 const SCHWEIZER_KANTONE: Record<string, string> = {
@@ -38,13 +38,14 @@ const jobPatchSchema = jobSchema.partial();
 
 // GET /api/jobs/search — Aggregated multi-source search
 router.get('/search', async (c) => {
-  const { q, canton, category, sources, limit } = c.req.query();
+  const { q, canton, location, category, sources, limit } = c.req.query();
 
   const result = await searchJobs({
     q: q || undefined,
     canton: canton || undefined,
+    location: location || undefined,
     category: category || undefined,
-    sources: sources ? sources.split(',').map((s) => s.trim()) : undefined,
+    sources: sources !== undefined ? sources.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     limit: limit ? parseInt(limit, 10) : 60,
   });
 
@@ -201,9 +202,30 @@ router.delete('/:id', async (c) => {
     return c.json({ error: 'Job not found' }, 404);
   }
 
+  const existingApplications = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(eq(applications.jobId, jobId))
+    .limit(1);
+
+  if (existingApplications.length > 0) {
+    return c.json({ error: 'Job has applications and cannot be deleted' }, 409);
+  }
+
+  await db.delete(savedJobs).where(eq(savedJobs.jobId, jobId));
   await db.delete(jobs).where(eq(jobs.id, jobId));
 
   return c.json({ ok: true });
+});
+
+// GET /api/jobs/categories
+router.get('/categories', async (c) => {
+  return c.json({ categories: JOB_KATEGORIEN });
+});
+
+// GET /api/jobs/kantone
+router.get('/kantone', async (c) => {
+  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 // GET /api/jobs/:id — Single job detail
@@ -220,16 +242,6 @@ router.get('/:id', async (c) => {
   }
 
   return c.json({ job });
-});
-
-// GET /api/jobs/categories
-router.get('/categories', async (c) => {
-  return c.json({ categories: JOB_KATEGORIEN });
-});
-
-// GET /api/jobs/kantone
-router.get('/kantone', async (c) => {
-  return c.json({ kantone: SCHWEIZER_KANTONE });
 });
 
 export default router;

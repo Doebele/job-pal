@@ -28,7 +28,7 @@ app.use(
   cors({
     origin: config.CORS_ORIGIN,
     allowHeaders: ['Content-Type', 'Authorization'],
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     exposeHeaders: ['Content-Length'],
   })
 );
@@ -37,13 +37,19 @@ app.use(
 app.get('/health', (c) => c.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // API routes
+app.use('/api/auth/me', authMiddleware);
 app.route('/api/auth', authRoutes);
 
 // Protected routes — require valid JWT
+app.use('/api/profile', authMiddleware);
 app.use('/api/profile/*', authMiddleware);
+app.use('/api/documents', authMiddleware);
 app.use('/api/documents/*', authMiddleware);
+app.use('/api/match', authMiddleware);
 app.use('/api/match/*', authMiddleware);
+app.use('/api/applications', authMiddleware);
 app.use('/api/applications/*', authMiddleware);
+app.use('/api/saved-jobs', authMiddleware);
 app.use('/api/saved-jobs/*', authMiddleware);
 app.use('/api/jobs/mine', authMiddleware);
 app.use('/api/jobs', async (c, next) => {
