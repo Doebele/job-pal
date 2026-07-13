@@ -30,6 +30,7 @@ const CACHE_TTL = 5 * 60 * 1000;
 export interface SearchParams {
   q?: string;
   canton?: string;
+  location?: string;
   category?: string;
   sources?: string[];
   limit?: number;
@@ -65,6 +66,7 @@ async function searchLocalJobs(params: SearchParams): Promise<AggregatedJob[]> {
   const clauses: any[] = [eq(jobs.isPublished, true)];
   if (params.category) clauses.push(eq(jobs.category, params.category));
   if (params.canton) clauses.push(eq(jobs.canton, params.canton));
+  if (params.location) clauses.push(ilike(jobs.location, `%${params.location}%`));
 
   let where: any = and(...clauses);
   if (params.q) {
@@ -94,13 +96,14 @@ async function searchLocalJobs(params: SearchParams): Promise<AggregatedJob[]> {
 // ─── Source: Indeed Switzerland RSS ─────────────────────────────────────────
 
 async function searchIndeed(params: SearchParams): Promise<AggregatedJob[]> {
-  const cacheKey = `indeed:${params.q ?? ''}:${params.canton ?? ''}`;
+  const location = params.location ?? params.canton;
+  const cacheKey = `indeed:${params.q ?? ''}:${location ?? ''}`;
   const hit = cache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.data;
 
   const qs = new URLSearchParams({ sort: 'date' });
   if (params.q) qs.set('q', params.q);
-  if (params.canton) qs.set('l', params.canton);
+  if (location) qs.set('l', location);
 
   try {
     const res = await fetch(`https://ch.indeed.com/rss?${qs}`, {
@@ -118,7 +121,7 @@ async function searchIndeed(params: SearchParams): Promise<AggregatedJob[]> {
         id: `indeed-ch:${item.guid || item.link || idx}`,
         title: item.title,
         description: stripHtml(item.description).slice(0, 400),
-        location: params.canton ?? 'Schweiz',
+        location: location ?? 'Schweiz',
         url: item.link,
         source: 'indeed-ch',
         sourceName: 'Indeed',
@@ -139,7 +142,8 @@ async function searchAdzuna(params: SearchParams): Promise<AggregatedJob[]> {
   const appKey = process.env.ADZUNA_APP_KEY;
   if (!appId || !appKey) return [];
 
-  const cacheKey = `adzuna:${params.q ?? ''}:${params.canton ?? ''}:${params.category ?? ''}`;
+  const location = params.location ?? params.canton;
+  const cacheKey = `adzuna:${params.q ?? ''}:${location ?? ''}:${params.category ?? ''}`;
   const hit = cache.get(cacheKey);
   if (hit && hit.expires > Date.now()) return hit.data;
 
@@ -150,7 +154,7 @@ async function searchAdzuna(params: SearchParams): Promise<AggregatedJob[]> {
     'content-type': 'application/json',
   });
   if (params.q) qs.set('what', params.q);
-  if (params.canton) qs.set('where', params.canton);
+  if (location) qs.set('where', location);
 
   try {
     const res = await fetch(`https://api.adzuna.com/v1/api/jobs/ch/search/1?${qs}`, {
@@ -189,6 +193,7 @@ export async function searchJobs(params: SearchParams): Promise<AggregatedJob[]>
 
   const tasks: Promise<AggregatedJob[]>[] = [];
   if (sources.includes('job-pal')) tasks.push(searchLocalJobs(params));
+  if (sources.includes('indeed-ch')) tasks.push(searchIndeed(params));
   if (sources.includes('adzuna')) tasks.push(searchAdzuna(params));
 
   const settled = await Promise.allSettled(tasks);
@@ -210,6 +215,7 @@ export async function searchJobs(params: SearchParams): Promise<AggregatedJob[]>
 export function getSourceStatus(): Array<{ id: string; configured: boolean }> {
   return [
     { id: 'job-pal', configured: true },
+    { id: 'indeed-ch', configured: true },
     { id: 'adzuna', configured: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY) },
   ];
 }

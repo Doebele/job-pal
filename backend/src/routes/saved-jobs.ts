@@ -45,7 +45,7 @@ router.post('/', async (c) => {
     .limit(1);
 
   if (existing) {
-    return c.json({ savedJob: existing }, 200);
+    return c.json({ savedJob: { ...existing, job } }, 200);
   }
 
   const [savedJob] = await db
@@ -53,7 +53,7 @@ router.post('/', async (c) => {
     .values({ userId, jobId: parsed.data.jobId })
     .returning();
 
-  return c.json({ savedJob }, 201);
+  return c.json({ savedJob: { ...savedJob, job } }, 201);
 });
 
 // GET /api/saved-jobs — List saved jobs
