@@ -147,10 +147,7 @@ export default function JobDetail() {
         {/* Description */}
         <div className="bp-card">
           <span className="t-label text-fg-3 mb-2 block">Stellenbeschreibung</span>
-          <div
-            className="t-body text-fg-2"
-            dangerouslySetInnerHTML={{ __html: job.description }}
-          />
+          <div className="t-body text-fg-2 whitespace-pre-wrap">{job.description}</div>
         </div>
 
         {/* Application deadline */}
